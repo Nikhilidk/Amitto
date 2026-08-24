@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lost & Found Community - User Registration (Person 1)</title>
+  <title>Lost & Found Community - User Registration</title>
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
@@ -32,7 +32,7 @@
       <!-- Registration Form -->
       <form id="registrationForm" class="registration-form" novalidate>
         
-        <!-- Full Name -->
+        <!-- Full Name (Sent to backend as 'name') -->
         <div class="form-group">
           <label for="fullName">Full Name</label>
           <div class="input-wrapper">
@@ -44,28 +44,15 @@
           </div>
         </div>
 
-        <div class="form-grid">
-          <!-- Email -->
-          <div class="form-group">
-            <label for="email">Email Address</label>
-            <div class="input-wrapper">
-              <input type="email" id="email" class="input-control" placeholder="mail@example.com" required>
-              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                <polyline points="22,6 12,13 2,6"></polyline>
-              </svg>
-            </div>
-          </div>
-
-          <!-- Phone -->
-          <div class="form-group">
-            <label for="phone">Phone Number</label>
-            <div class="input-wrapper">
-              <input type="tel" id="phone" class="input-control" placeholder="+91 XXXXX-XXXXX" required>
-              <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-              </svg>
-            </div>
+        <!-- Email Address -->
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-wrapper">
+            <input type="email" id="email" class="input-control" placeholder="email@example.com" required>
+            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
           </div>
         </div>
 
@@ -97,7 +84,7 @@
           </div>
         </div>
 
-        <!-- ID Document Photo Upload -->
+        <!-- ID Document Photo Upload (Sent to Multer backend as 'idPhoto') -->
         <div class="form-group">
           <label>ID Document / Proof Photo <span>(Required for Admin Approval)</span></label>
           <div id="dropzone" class="file-dropzone">
@@ -111,7 +98,7 @@
                 </svg>
               </div>
               <span class="dropzone-title">Click to upload or drag & drop</span>
-              <span class="dropzone-subtitle">PNG and JPG (Max 5MB)</span>
+              <span class="dropzone-subtitle">PNG or JPG (Max 5MB)</span>
             </div>
           </div>
 
@@ -133,7 +120,7 @@
           <!-- Axios Upload Progress Bar -->
           <div id="uploadProgress" class="upload-progress-container">
             <div class="upload-text">
-              <span>Sending Payload & Uploading ID Photo...</span>
+              <span>Sending FormData & Uploading ID Photo...</span>
               <span id="progressPercent">0%</span>
             </div>
             <div class="upload-progress-bar">
@@ -151,7 +138,7 @@
       </form>
 
       <div class="footer-note">
-        Person 1 Client UI • Axios REST API Integration
+        Person 1 Client UI • Axios FormData Integration
       </div>
     </div>
   </div>

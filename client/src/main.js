@@ -4,7 +4,6 @@ import { registerUser, getFriendlyErrorMessage, CONFIG } from "./apiService.js";
 const registrationForm = document.getElementById("registrationForm");
 const fullNameInput = document.getElementById("fullName");
 const emailInput = document.getElementById("email");
-const phoneInput = document.getElementById("phone");
 const passwordInput = document.getElementById("password");
 const confirmPasswordInput = document.getElementById("confirmPassword");
 const strengthMeter = document.getElementById("strengthMeter");
@@ -27,7 +26,9 @@ const apiModeBadge = document.getElementById("apiModeBadge");
 
 // Display current API Mode (Mock vs Real API)
 if (apiModeBadge) {
-  apiModeBadge.textContent = CONFIG.USE_MOCK ? "API Status: Mock Mode (Parallel Testing)" : "API Status: Real Backend Connected";
+  apiModeBadge.textContent = CONFIG.USE_MOCK 
+    ? "API Status: Mock Mode (Parallel Testing)" 
+    : `API Connected: POST ${CONFIG.API_BASE_URL}${CONFIG.REGISTER_ENDPOINT}`;
   apiModeBadge.style.color = CONFIG.USE_MOCK ? "#38bdf8" : "#10b981";
 }
 
@@ -132,19 +133,18 @@ function hideAlert() {
   alertMessage.textContent = "";
 }
 
-// Form Submission Handler (Axios POST)
+// Form Submission Handler (Axios POST with FormData)
 registrationForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   hideAlert();
 
-  const fullName = fullNameInput.value.trim();
+  const name = fullNameInput.value.trim();
   const email = emailInput.value.trim();
-  const phone = phoneInput.value.trim();
   const password = passwordInput.value;
   const confirmPassword = confirmPasswordInput.value;
 
   // Form Validations
-  if (!fullName || !email || !phone || !password || !confirmPassword) {
+  if (!name || !email || !password || !confirmPassword) {
     showAlert("Please fill in all required fields.", "error");
     return;
   }
@@ -166,16 +166,15 @@ registrationForm.addEventListener("submit", async (e) => {
 
   // Set Loading State
   btnSubmit.disabled = true;
-  btnText.textContent = "Sending Registration via Axios...";
+  btnText.textContent = "Submitting Registration...";
   btnSpinner.style.display = "block";
   uploadProgress.style.display = "flex";
 
   try {
     const result = await registerUser(
       {
-        fullName,
+        name,
         email,
-        phone,
         password,
         idFile: selectedFile
       },
@@ -185,16 +184,22 @@ registrationForm.addEventListener("submit", async (e) => {
       }
     );
 
-    // Registration Success
-    showAlert(result.message || `Registration submitted successfully for ${email}! Status: PENDING verification.`, "success");
+    // Registration Success! (Reads backend schema response)
+    const successMsg = result.message || "Registration successful, pending admin verification";
+    showAlert(`${successMsg}! Account created for ${name}.`, "success");
     
+    // Store token if returned by backend
+    if (result.token) {
+      localStorage.setItem("authToken", result.token);
+    }
+
     // Reset Form
     registrationForm.reset();
     btnRemoveFile.click();
     strengthMeter.style.width = "0%";
     
   } catch (error) {
-    console.error("Axios Post Failed:", error);
+    console.error("Registration Request Failed:", error);
     showAlert(getFriendlyErrorMessage(error), "error");
   } finally {
     // Reset Button State
