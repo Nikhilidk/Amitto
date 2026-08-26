@@ -1,15 +1,16 @@
-# 🚀 Person 1: Registration Form UI & Axios REST API Integration
+# React + Vite
 
-Welcome Sanyam! This repository contains your updated **Person 1 (Client)** implementation for the Lost & Found Community Website.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
----
+Currently, two official plugins are available:
 
-## 💡 What Changed in Person 1's Architecture?
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-1. **REST API / Axios Integration**: Instead of calling Firebase SDK directly on the client, Person 1 now submits user registration details and the ID proof document as a `multipart/form-data` payload via **Axios**.
-2. **Parallel Development (Mock API Mode)**: Person 1 does **NOT** have to wait for Person 2's backend route to be built! Person 1 includes a built-in **Mock API Mode** (`USE_MOCK: true` in `src/apiService.js`) to test the UI, drag-and-drop file upload, password strength, loading spinners, and upload progress right now.
-3. **Seamless Backend Handoff**: Once Person 2 finishes building their `/api/register` backend route, Person 1 changes just 1 line of code in `src/apiService.js`: `USE_MOCK: false`.
+## React Compiler
 
----
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## 🛠️ File Structure
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
