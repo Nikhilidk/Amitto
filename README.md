@@ -1,2 +1,0 @@
-# Amitto
-minor university project 
