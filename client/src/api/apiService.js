@@ -12,30 +12,18 @@ const apiClient = axios.create({
   timeout: 15000
 });
 
-export async function registerUser({ name, email, password, idFile }, onProgress = () => {}) {
-  if (CONFIG.USE_MOCK) {
-    for (let pct = 10; pct <= 100; pct += 20) {
-      await new Promise((res) => setTimeout(res, 180));
-      onProgress(pct);
-    }
-    if (email.includes('error') || email.includes('exist')) {
-      const error = new Error('Email already registered');
-      error.response = { status: 400, data: { error: 'Email already registered' } };
-      throw error;
-    }
-    return {
-      message: 'Registration successful, pending admin verification',
-      token: 'mock-jwt-token-' + Date.now(),
-      user: { id: 'mock-uid-' + Date.now(), name, email, verificationStatus: 'pending' }
-    };
-  }
+const getAuthHeader = () => {
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
+export async function registerUser({ name, email, password, idFile }, onProgress = () => { }) {
   const formData = new FormData();
   formData.append('name', name);
   formData.append('email', email);
   formData.append('password', password);
   if (idFile) {
-    formData.append('idPhoto', idFile, idFile.name);
+    formData.append('idPhoto', idFile, idFile.name); // Matches upload.single('idPhoto')
   }
 
   const response = await apiClient.post(CONFIG.REGISTER_ENDPOINT, formData, {
@@ -50,6 +38,27 @@ export async function registerUser({ name, email, password, idFile }, onProgress
   return response.data;
 }
 
+export async function loginUser({ email, password }) {
+  const response = await apiClient.post(CONFIG.LOGIN_ENDPOINT, { email, password });
+  return response.data;
+}
+
+export async function getPendingUsers() {
+  const response = await apiClient.get('/admin/pending-users', {
+    headers: getAuthHeader()
+  });
+  return response.data;
+}
+
+export async function updateUserStatus(userId, status) {
+  const response = await apiClient.patch(
+    `/admin/users/${userId}/status`,
+    { status },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
 export function getFriendlyErrorMessage(error) {
   if (error.response && error.response.data) {
     return error.response.data.error || error.response.data.message || `Server Error (${error.response.status}).`;
@@ -58,22 +67,4 @@ export function getFriendlyErrorMessage(error) {
   } else {
     return error.message || 'An unexpected error occurred.';
   }
-}
-export async function loginUser({ email, password }) {
-  if (CONFIG.USE_MOCK) {
-    await new Promise((res) => setTimeout(res, 500));
-    if (password !== 'test1234') {
-      const error = new Error('Invalid email or password');
-      error.response = { status: 401, data: { error: 'Invalid email or password' } };
-      throw error;
-    }
-    return {
-      message: 'Login successful',
-      token: 'mock-jwt-token-' + Date.now(),
-      user: { id: 'mock-uid', name: 'Test User', email, role: 'student', verificationStatus: 'pending' }
-    };
-  }
-
-  const response = await apiClient.post(CONFIG.LOGIN_ENDPOINT, { email, password });
-  return response.data;
 }

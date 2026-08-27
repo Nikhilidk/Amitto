@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 dotenv.config();
 
 const authRoutes = require('./routes/auth');  // moved here, AFTER dotenv.config()
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
