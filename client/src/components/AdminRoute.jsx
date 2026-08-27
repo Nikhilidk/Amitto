@@ -1,13 +1,25 @@
-import { Navigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext.jsx'
+
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
 
 function AdminRoute({ children }) {
-    const { user, loading, isAdmin } = useAuth()
+  const { user, loading, isAdmin } = useAuth();
 
-    if (loading) return null
-    if (!user || !isAdmin) return <Navigate to="/login" replace />
+  // 1. Wait until AuthContext finishes checking local storage/session
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">
+        Authenticating access...
+      </div>
+    );
+  }
 
-    return children
+  // 2. Redirect to login if user isn't authenticated
+  if (!user || !isAdmin) return <Navigate to="/login" replace />;
+
+  // 4. Render protected admin children routes
+  return children ?? <Outlet />;
 }
 
-export default AdminRoute
+export default AdminRoute;
+
