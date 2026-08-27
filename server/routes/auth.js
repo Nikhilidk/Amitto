@@ -53,7 +53,6 @@ router.post('/register', upload.single('idPhoto'), async (req, res) => {
       email,
       password: hashedPassword,
       idPhotoUrl: cloudinaryResult.secure_url,
-      role: req.body.role || 'student',
     });
 
     await newUser.save();
@@ -72,7 +71,6 @@ router.post('/register', upload.single('idPhoto'), async (req, res) => {
         id: newUser._id,
         name: newUser.name,
         email: newUser.email,
-        role: newUser.role,
         verificationStatus: newUser.verificationStatus,
       },
     });
@@ -81,7 +79,6 @@ router.post('/register', upload.single('idPhoto'), async (req, res) => {
     res.status(500).json({ error: 'Server error during registration' });
   }
 });
-
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
@@ -93,22 +90,21 @@ router.post('/login', async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(400).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Issue JWT
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    res.json({
+    res.status(200).json({
       message: 'Login successful',
       token,
       user: {
@@ -124,5 +120,4 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: 'Server error during login' });
   }
 });
-
 module.exports = router;

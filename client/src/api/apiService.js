@@ -1,9 +1,10 @@
 import axios from 'axios';
 
 export const CONFIG = {
-  USE_MOCK: false, // set true only for isolated UI testing without the backend running
+  USE_MOCK: false,
   API_BASE_URL: 'http://localhost:5000/api',
-  REGISTER_ENDPOINT: '/auth/register'
+  REGISTER_ENDPOINT: '/auth/register',
+  LOGIN_ENDPOINT: '/auth/login'
 };
 
 const apiClient = axios.create({
@@ -49,26 +50,6 @@ export async function registerUser({ name, email, password, idFile }, onProgress
   return response.data;
 }
 
-export async function loginUser({ email, password }) {
-  if (CONFIG.USE_MOCK) {
-    if (email === 'admin@amitto.com' && password === 'admin123') {
-      return {
-        message: 'Login successful',
-        token: 'mock-admin-jwt-token',
-        user: { id: 'mock-admin-id', name: 'Admin User', email, role: 'admin', verificationStatus: 'approved' }
-      };
-    }
-    return {
-      message: 'Login successful',
-      token: 'mock-jwt-token-' + Date.now(),
-      user: { id: 'mock-uid-' + Date.now(), name: 'Test User', email, role: 'student', verificationStatus: 'approved' }
-    };
-  }
-
-  const response = await apiClient.post('/auth/login', { email, password });
-  return response.data;
-}
-
 export function getFriendlyErrorMessage(error) {
   if (error.response && error.response.data) {
     return error.response.data.error || error.response.data.message || `Server Error (${error.response.status}).`;
@@ -77,4 +58,22 @@ export function getFriendlyErrorMessage(error) {
   } else {
     return error.message || 'An unexpected error occurred.';
   }
+}
+export async function loginUser({ email, password }) {
+  if (CONFIG.USE_MOCK) {
+    await new Promise((res) => setTimeout(res, 500));
+    if (password !== 'test1234') {
+      const error = new Error('Invalid email or password');
+      error.response = { status: 401, data: { error: 'Invalid email or password' } };
+      throw error;
+    }
+    return {
+      message: 'Login successful',
+      token: 'mock-jwt-token-' + Date.now(),
+      user: { id: 'mock-uid', name: 'Test User', email, role: 'student', verificationStatus: 'pending' }
+    };
+  }
+
+  const response = await apiClient.post(CONFIG.LOGIN_ENDPOINT, { email, password });
+  return response.data;
 }
