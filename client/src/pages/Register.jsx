@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { registerUser, getFriendlyErrorMessage } from '../api/apiService.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 function Register() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' })
@@ -9,6 +10,7 @@ function Register() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const { login } = useAuth()
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -44,7 +46,7 @@ function Register() {
         (pct) => setProgress(pct)
       )
       setSuccess(result.message)
-      localStorage.setItem('token', result.token)
+      login(result.user, result.token)
     } catch (err) {
       setError(getFriendlyErrorMessage(err))
     } finally {
