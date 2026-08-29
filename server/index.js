@@ -22,7 +22,7 @@ mongoose.connect(process.env.MONGO_URI)
 
 // route 
 app.use('/api/auth', authRoutes);
-app.use('/api/admin', adminRoutes);   // ← add this line
+app.use('/api/admin', adminRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
