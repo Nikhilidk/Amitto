@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
 const User = require('../models/User');
+const { verifyToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -118,6 +119,46 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error during login' });
+  }
+});
+// GET /api/auth/me — get current logged-in user's profile
+router.get('/me', verifyToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.status(200).json(user);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching profile' });
+  }
+});
+// PATCH /api/posts/:id/status — update a post's status (only the post owner can do this)
+router.patch('/:id/status', verifyToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!['active', 'claim_pending', 'resolved'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status value' });
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (post.postedBy.toString() !== req.user.userId) {
+      return res.status(403).json({ error: 'Only the post owner can update its status' });
+    }
+
+    post.status = status;
+    await post.save();
+
+    res.status(200).json({ message: 'Status updated successfully', post });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error updating post status' });
   }
 });
 module.exports = router;
