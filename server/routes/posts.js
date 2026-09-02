@@ -83,7 +83,7 @@ router.get('/mine', verifyToken, async (req, res) => {
   }
 });
 
-// PATCH /api/posts/:id/status — update a post's status
+// PATCH /api/posts/:id/status — update a post's status (owner or admin)
 router.patch('/:id/status', verifyToken, async (req, res) => {
   try {
     const { status } = req.body;
@@ -97,8 +97,8 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Post not found' });
     }
 
-    if (post.postedBy.toString() !== req.user.userId) {
-      return res.status(403).json({ error: 'Only the post owner can update its status' });
+    if (post.postedBy.toString() !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the post owner or an admin can update its status' });
     }
 
     post.status = status;
