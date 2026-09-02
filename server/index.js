@@ -5,8 +5,9 @@ const mongoose = require('mongoose');
 
 dotenv.config();
 
-const authRoutes = require('./routes/auth');  // moved here, AFTER dotenv.config()
+const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const postRoutes = require('./routes/posts');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -23,6 +24,7 @@ mongoose.connect(process.env.MONGO_URI)
 // route 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/posts', postRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
