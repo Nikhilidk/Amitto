@@ -155,3 +155,15 @@ export function getFriendlyErrorMessage(error) {
     return error.message || 'An unexpected error occurred.';
   }
 }
+
+export async function updateProfilePhoto(photoFile) {
+  const formData = new FormData();
+  formData.append('photo', photoFile, photoFile.name);
+
+  const response = await apiClient.patch(
+    `${CONFIG.ME_ENDPOINT}/photo`,
+    formData,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}

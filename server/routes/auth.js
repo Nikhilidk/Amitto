@@ -161,4 +161,25 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'Server error updating post status' });
   }
 });
+// PATCH /api/auth/me/photo — update profile picture
+router.patch('/me/photo', verifyToken, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No photo provided' });
+    }
+
+    const cloudinaryResult = await uploadToCloudinary(req.file.buffer);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.userId,
+      { photoUrl: cloudinaryResult.secure_url },
+      { new: true }
+    ).select('-password');
+
+    res.status(200).json({ message: 'Profile photo updated', user: updatedUser });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error updating profile photo' });
+  }
+});
 module.exports = router;

@@ -23,6 +23,10 @@ const userSchema = new mongoose.Schema({
     enum: ['pending', 'approved', 'rejected'],
     default: 'pending',
   },
+  photoUrl: {
+  type: String,
+  default: '',
+},
   role: {
     type: String,
     enum: ['student', 'admin'],
