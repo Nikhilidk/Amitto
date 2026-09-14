@@ -5,7 +5,8 @@ export const CONFIG = {
   API_BASE_URL: 'http://localhost:5000/api',
   REGISTER_ENDPOINT: '/auth/register',
   LOGIN_ENDPOINT: '/auth/login',
-  POSTS_ENDPOINT: '/posts'
+  ME_ENDPOINT: '/auth/me',
+  POSTS_ENDPOINT: '/posts',
 };
 
 const apiClient = axios.create({
@@ -17,6 +18,10 @@ const getAuthHeader = () => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
+
+// =========================================================================
+// AUTH & USER APIs
+// =========================================================================
 
 export async function registerUser({ name, email, password, idFile }, onProgress = () => { }) {
   const formData = new FormData();
@@ -44,10 +49,81 @@ export async function loginUser({ email, password }) {
   return response.data;
 }
 
+/**
+ * GET /api/auth/me — Fetches logged-in user profile (requires Auth token)
+ */
+export async function getMyProfile() {
+  const response = await apiClient.get(CONFIG.ME_ENDPOINT, {
+    headers: getAuthHeader()
+  });
+  return response.data;
+}
+
+// =========================================================================
+// POSTS APIs
+// =========================================================================
+
+/**
+ * POST /api/posts — Create a new post with photo upload (requires Auth token)
+ * Expects FormData matching Multer upload.single('photo')
+ */
+export async function createPost({ type, title, description, category, campusZone, photoFile }, onProgress = () => { }) {
+  const formData = new FormData();
+  formData.append('type', type);
+  formData.append('title', title);
+  formData.append('description', description);
+  if (category) formData.append('category', category);
+  if (campusZone) formData.append('campusZone', campusZone);
+  if (photoFile) {
+    formData.append('photo', photoFile, photoFile.name); // Matches upload.single('photo')
+  }
+
+  const response = await apiClient.post(CONFIG.POSTS_ENDPOINT, formData, {
+    headers: getAuthHeader(),
+    onUploadProgress: (progressEvent) => {
+      if (progressEvent.total) {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress(percentCompleted);
+      }
+    }
+  });
+
+  return response.data;
+}
+
+/**
+ * GET /api/posts — Browse all community posts (public, no auth needed)
+ */
 export async function getPosts() {
   const response = await apiClient.get(CONFIG.POSTS_ENDPOINT);
   return response.data;
 }
+
+/**
+ * GET /api/posts/mine — Fetch posts created by logged-in user (requires Auth token)
+ */
+export async function getMyPosts() {
+  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/mine`, {
+    headers: getAuthHeader()
+  });
+  return response.data;
+}
+
+/**
+ * PATCH /api/posts/:id/status — Update a post's status (owner or admin, requires Auth token)
+ */
+export async function updatePostStatus(postId, status) {
+  const response = await apiClient.patch(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/status`,
+    { status },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+// =========================================================================
+// ADMIN APIs
+// =========================================================================
 
 export async function getPendingUsers() {
   const response = await apiClient.get('/admin/pending-users', {
@@ -64,6 +140,10 @@ export async function updateUserStatus(userId, status) {
   );
   return response.data;
 }
+
+// =========================================================================
+// ERROR HELPER
+// =========================================================================
 
 export function getFriendlyErrorMessage(error) {
   if (error.response && error.response.data) {
