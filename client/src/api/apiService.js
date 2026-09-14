@@ -4,7 +4,8 @@ export const CONFIG = {
   USE_MOCK: false,
   API_BASE_URL: 'http://localhost:5000/api',
   REGISTER_ENDPOINT: '/auth/register',
-  LOGIN_ENDPOINT: '/auth/login'
+  LOGIN_ENDPOINT: '/auth/login',
+  POSTS_ENDPOINT: '/posts'
 };
 
 const apiClient = axios.create({
@@ -40,6 +41,11 @@ export async function registerUser({ name, email, password, idFile }, onProgress
 
 export async function loginUser({ email, password }) {
   const response = await apiClient.post(CONFIG.LOGIN_ENDPOINT, { email, password });
+  return response.data;
+}
+
+export async function getPosts() {
+  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT);
   return response.data;
 }
 
