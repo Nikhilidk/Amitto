@@ -5,6 +5,7 @@ import AdminRoute from './components/AdminRoute.jsx'
 import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
 import Home from './pages/Home.jsx'
+import CreatePost from './pages/Createpost.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import Profile from './pages/Profile.jsx'   // ← add this import
 
@@ -17,12 +18,21 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
 
+
         {/* Protected Student Route */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
               <Home />
+            </ProtectedRoute>
+          }
+        />
+         <Route
+          path="/create-post"
+          element={
+            <ProtectedRoute>
+              <CreatePost />
             </ProtectedRoute>
           }
         />
