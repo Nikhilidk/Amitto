@@ -15,25 +15,27 @@ function Navbar() {
       <Link to="/" className="text-xl font-bold tracking-wide">Amitto</Link>
 
       <div className="flex items-center gap-5 text-sm font-medium">
-        <Link to="/" className="hover:underline opacity-90 hover:opacity-100">Home</Link>
+        {user && (
+          <Link to="/" className="hover:underline opacity-90 hover:opacity-100">Home</Link>
+        )}
 
         {!user && (
           <>
-            <Link to="/login" className="hover:underline opacity-90 hover:opacity-100">Login</Link>
             <Link to="/register" className="hover:underline opacity-90 hover:opacity-100">Register</Link>
+            <Link to="/login" className="hover:underline opacity-90 hover:opacity-100">Login</Link>
           </>
         )}
 
         {user && (
           <>
             <Link to="/create-post" className="hover:underline opacity-90 hover:opacity-100">Create Post</Link>
-            
+
             {/* Profile Navigation Link with Avatar / Initial Badge */}
             <Link to="/profile" className="flex items-center gap-2 hover:underline opacity-90 hover:opacity-100">
               {user.photoUrl ? (
-                <img 
-                  src={user.photoUrl} 
-                  alt="Avatar" 
+                <img
+                  src={user.photoUrl}
+                  alt="Avatar"
                   className="w-7 h-7 rounded-full object-cover border border-white shadow-sm"
                 />
               ) : (
@@ -51,8 +53,8 @@ function Navbar() {
         )}
 
         {user && (
-          <button 
-            onClick={handleLogout} 
+          <button
+            onClick={handleLogout}
             className="bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded transition text-xs font-semibold"
           >
             Logout

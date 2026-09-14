@@ -364,7 +364,7 @@ export default function CreatePost() {
                 ) : !userIsVerified ? (
                   '🔒 Account Verification Required to Submit'
                 ) : (
-                  '🚀 Publish Post'
+                  'Publish Post'
                 )}
               </button>
               
