@@ -7,6 +7,7 @@ export const CONFIG = {
   LOGIN_ENDPOINT: '/auth/login',
   ME_ENDPOINT: '/auth/me',
   POSTS_ENDPOINT: '/posts',
+  MY_POSTS_ENDPOINT: '/posts/mine'
 };
 
 const apiClient = axios.create({
@@ -103,7 +104,7 @@ export async function getPosts() {
  * GET /api/posts/mine — Fetch posts created by logged-in user (requires Auth token)
  */
 export async function getMyPosts() {
-  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/mine`, {
+  const response = await apiClient.get(CONFIG.MY_POSTS_ENDPOINT, {
     headers: getAuthHeader()
   });
   return response.data;
