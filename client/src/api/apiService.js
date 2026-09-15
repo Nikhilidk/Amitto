@@ -167,3 +167,8 @@ export async function updateProfilePhoto(photoFile) {
   );
   return response.data;
 }
+
+export async function getLeaderboard() {
+  const response = await apiClient.get('/auth/leaderboard');
+  return response.data;
+}

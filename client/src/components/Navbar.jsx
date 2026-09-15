@@ -11,51 +11,89 @@ function Navbar() {
   };
 
   return (
-    <nav className="bg-blue-600 text-white px-6 py-4 shadow flex justify-between items-center">
-      <Link to="/" className="text-xl font-bold tracking-wide">Amitto</Link>
+    <nav className="bg-[#2D2A32] text-[#F5EFE6] px-6 py-4 shadow-md border-b border-[#2D2A32]/10 sticky top-0 z-50 backdrop-blur-md bg-opacity-95 flex justify-between items-center font-sans">
+      
+      {/* Brand Section */}
+      <Link to="/" className="flex items-center gap-2 group">
+        <span className="text-xl font-black tracking-tight text-[#F5EFE6] group-hover:text-[#D2A066] transition">
+          AMITTO
+        </span>
+        <span className="hidden sm:inline-block text-[10px] font-black uppercase tracking-widest text-[#F5EFE6]/60 border-l border-[#F5EFE6]/20 pl-2">
+          Lost & Found
+        </span>
+      </Link>
 
-      <div className="flex items-center gap-5 text-sm font-medium">
+      {/* Navigation Links */}
+      <div className="flex items-center gap-4 sm:gap-6 text-sm font-semibold">
         {user && (
-          <Link to="/" className="hover:underline opacity-90 hover:opacity-100">Home</Link>
+          <Link 
+            to="/" 
+            className="text-[#F5EFE6]/80 hover:text-[#F5EFE6] transition"
+          >
+            Home
+          </Link>
         )}
 
         {!user && (
-          <>
-            <Link to="/register" className="hover:underline opacity-90 hover:opacity-100">Register</Link>
-            <Link to="/login" className="hover:underline opacity-90 hover:opacity-100">Login</Link>
-          </>
+          <div className="flex items-center gap-3">
+            <Link 
+              to="/register" 
+              className="bg-[#F5EFE6] text-[#2D2A32] hover:bg-[#e8decb] px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-sm"
+            >
+              Register
+            </Link>
+            <Link 
+              to="/login" 
+              className="text-[#F5EFE6]/80 hover:text-[#F5EFE6] px-3 py-1.5 rounded-lg text-xs font-bold transition"
+            >
+              Login
+            </Link>
+          </div>
         )}
 
         {user && (
           <>
-            <Link to="/create-post" className="hover:underline opacity-90 hover:opacity-100">Create Post</Link>
+            <Link 
+              to="/create-post" 
+              className="text-[#F5EFE6]/80 hover:text-[#F5EFE6] transition"
+            >
+              Create Post
+            </Link>
 
-            {/* Profile Navigation Link with Avatar / Initial Badge */}
-            <Link to="/profile" className="flex items-center gap-2 hover:underline opacity-90 hover:opacity-100">
+            {/* Profile Navigation Link */}
+            <Link 
+              to="/profile" 
+              className="flex items-center gap-2 text-[#F5EFE6]/80 hover:text-[#F5EFE6] transition"
+            >
               {user.photoUrl ? (
                 <img
                   src={user.photoUrl}
                   alt="Avatar"
-                  className="w-7 h-7 rounded-full object-cover border border-white shadow-sm"
+                  className="w-7 h-7 rounded-full object-cover border border-[#F5EFE6]/30 shadow-sm"
                 />
               ) : (
-                <span className="w-7 h-7 rounded-full bg-blue-800 flex items-center justify-center text-xs font-bold border border-white">
+                <span className="w-7 h-7 rounded-full bg-[#D2A066] text-[#2D2A32] flex items-center justify-center text-xs font-black border border-[#F5EFE6]/20">
                   {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </span>
               )}
-              <span>Profile</span>
+              <span className="hidden sm:inline">Profile</span>
             </Link>
           </>
         )}
 
         {user && isAdmin && (
-          <Link to="/admin" className="hover:underline text-yellow-300 font-semibold">Admin Panel</Link>
+          <Link 
+            to="/admin" 
+            className="bg-[#D2A066]/20 text-[#D2A066] border border-[#D2A066]/40 px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-[#D2A066]/30 transition"
+          >
+            Admin Panel
+          </Link>
         )}
 
         {user && (
           <button
             onClick={handleLogout}
-            className="bg-blue-700 hover:bg-blue-800 text-white px-3 py-1.5 rounded transition text-xs font-semibold"
+            className="bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 px-3 py-1.5 rounded-xl transition text-xs font-bold"
           >
             Logout
           </button>

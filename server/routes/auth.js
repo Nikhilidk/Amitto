@@ -182,4 +182,17 @@ router.patch('/me/photo', verifyToken, upload.single('photo'), async (req, res) 
     res.status(500).json({ error: 'Server error updating profile photo' });
   }
 });
+// GET /api/auth/leaderboard — top users by trust score
+router.get('/leaderboard', async (req, res) => {
+  try {
+    const topUsers = await User.find({ verificationStatus: 'approved' })
+      .select('name trustScore photoUrl')
+      .sort({ trustScore: -1 })
+      .limit(5);
+    res.status(200).json(topUsers);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching leaderboard' });
+  }
+}); 
 module.exports = router;
