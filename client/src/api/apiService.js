@@ -172,3 +172,8 @@ export async function getLeaderboard() {
   const response = await apiClient.get('/auth/leaderboard');
   return response.data;
 }
+
+export async function getPostById(postId) {
+  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`);
+  return response.data;
+}
