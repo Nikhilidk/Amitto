@@ -95,8 +95,15 @@ export async function createPost({ type, title, description, category, campusZon
 /**
  * GET /api/posts — Browse all community posts (public, no auth needed)
  */
-export async function getPosts() {
-  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT);
+export async function getPosts(filters = {}) {
+  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT, { params: filters });
+  return response.data;
+}
+
+export async function deletePost(postId) {
+  const response = await apiClient.delete(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+    headers: getAuthHeader()
+  });
   return response.data;
 }
 

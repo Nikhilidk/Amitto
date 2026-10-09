@@ -24,6 +24,12 @@ const uploadToCloudinary = (fileBuffer) => {
   });
 };
 
+// Cloudinary URL -> public_id, e.g. .../upload/v123/amitto/posts/abc.png -> amitto/posts/abc
+const getPublicIdFromUrl = (url) => {
+  const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[^./]+$/);
+  return match ? match[1] : null;
+};
+
 // POST /api/posts — create a new post (verified users only)
 router.post('/', verifyToken, upload.single('photo'), async (req, res) => {
   try {
@@ -62,10 +68,40 @@ router.post('/', verifyToken, upload.single('photo'), async (req, res) => {
   }
 });
 
-// GET /api/posts — browse all posts
+// Helper: only accept plain strings from the query string.
+// Express's query parser turns ?type[$ne]=x into an object, which would
+// otherwise be passed straight into the Mongo query.
+const asString = (value) =>
+  typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// GET /api/posts — browse all posts, with optional filters
+// ?type=lost|found &category=... &campusZone=... &status=... &q=search text
 router.get('/', async (req, res) => {
   try {
-    const posts = await Post.find().sort({ createdAt: -1 }).populate('postedBy', 'name photoUrl trustScore');
+    const filter = {};
+
+    const type = asString(req.query.type);
+    const category = asString(req.query.category);
+    const campusZone = asString(req.query.campusZone);
+    const status = asString(req.query.status);
+    const q = asString(req.query.q);
+
+    if (type) filter.type = type;
+    if (category) filter.category = category;
+    if (campusZone) filter.campusZone = campusZone;
+    if (status) filter.status = status;
+
+    if (q) {
+      const pattern = new RegExp(escapeRegex(q.slice(0, 100)), 'i');
+      filter.$or = [{ title: pattern }, { description: pattern }];
+    }
+
+    const posts = await Post.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('postedBy', 'name photoUrl trustScore');
+
     res.status(200).json(posts);
   } catch (err) {
     console.error(err);
@@ -130,6 +166,39 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error updating post status' });
+  }
+});
+
+// DELETE /api/posts/:id — owner or admin
+router.delete('/:id', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (post.postedBy.toString() !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the post owner or an admin can delete this post' });
+    }
+
+    await post.deleteOne();
+
+    // Best-effort image cleanup: a Cloudinary failure shouldn't undo the delete
+    try {
+      const publicId = getPublicIdFromUrl(post.photoUrl);
+      if (publicId) await cloudinary.uploader.destroy(publicId);
+    } catch (imgErr) {
+      console.error('Cloudinary cleanup failed:', imgErr);
+    }
+
+    res.status(200).json({ message: 'Post deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error deleting post' });
   }
 });
 
