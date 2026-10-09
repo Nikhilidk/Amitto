@@ -1,3 +1,4 @@
+const mongoose = require('mongoose'); 
 const express = require('express');
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
@@ -64,7 +65,7 @@ router.post('/', verifyToken, upload.single('photo'), async (req, res) => {
 // GET /api/posts — browse all posts
 router.get('/', async (req, res) => {
   try {
-    const posts = await Post.find().sort({ createdAt: -1 }).populate('postedBy', 'name email');
+    const posts = await Post.find().sort({ createdAt: -1 }).populate('postedBy', 'name photoUrl trustScore');
     res.status(200).json(posts);
   } catch (err) {
     console.error(err);
@@ -80,6 +81,27 @@ router.get('/mine', verifyToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error fetching your posts' });
+  }
+});
+
+// GET /api/posts/:id — single post details (public)
+router.get('/:id', async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    const post = await Post.findById(req.params.id)
+      .populate('postedBy', 'name photoUrl trustScore');
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    res.status(200).json(post);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching post' });
   }
 });
 
