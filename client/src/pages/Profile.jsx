@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { getMyProfile, getMyPosts, updatePostStatus, updateProfilePhoto } from '../api/apiService';
 
 export default function Profile() {
@@ -241,7 +242,9 @@ export default function Profile() {
           {filteredPosts.map(post => (
             <div key={post._id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="relative">
-                <img src={post.photoUrl} alt={post.title} className="w-full h-40 object-cover" />
+                <Link to={`/posts/${post._id}`}>
+                  <img src={post.photoUrl} alt={post.title} className="w-full h-40 object-cover" />
+                </Link>
                 <span
                   className={`absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase ${
                     post.type === 'lost' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
@@ -255,7 +258,9 @@ export default function Profile() {
               </div>
 
               <div className="p-4">
-                <h3 className="font-semibold text-gray-900 text-sm">{post.title}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">
+                  <Link to={`/posts/${post._id}`} className="hover:underline">{post.title}</Link>
+                </h3>
                 <p className="text-gray-500 text-xs mt-1 line-clamp-2">{post.description}</p>
 
                 <div className="flex flex-wrap gap-2 mt-3">
