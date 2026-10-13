@@ -7,7 +7,8 @@ import Login from './pages/Login.jsx'
 import Home from './pages/Home.jsx'
 import CreatePost from './pages/Createpost.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
-import Profile from './pages/Profile.jsx'   // ← add this import
+import Profile from './pages/Profile.jsx'   
+import PostDetails from './pages/PostDetails.jsx'
 
 function App() {
   return (
@@ -17,6 +18,8 @@ function App() {
         {/* Public Routes */}
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/posts/:id" element={<PostDetails />} />
+      
 
 
         {/* Protected Student Route */}

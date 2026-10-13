@@ -152,7 +152,9 @@ function Home() {
             <div className="flex flex-col gap-6">
               {filteredPosts.map(post => (
                 <div key={post._id} className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm hover:shadow-md transition overflow-hidden">
-                  <PostCard post={post} />
+                  <Link to={`/posts/${post._id}`} className="block">
+                    <PostCard post={post} />
+                  </Link>
                 </div>
               ))}
             </div>
