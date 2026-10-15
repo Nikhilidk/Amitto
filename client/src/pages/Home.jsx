@@ -1,194 +1,239 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { getPosts, getMyPosts, getLeaderboard, getFriendlyErrorMessage } from '../api/apiService.js'
-import { useAuth } from '../context/AuthContext.jsx'
-import PostCard from '../components/PostCard.jsx'
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { getPosts, getFriendlyErrorMessage } from '../api/apiService';
+import { CATEGORIES, CAMPUS_ZONES } from '../constants';
+import PostCard from '../components/PostCard';
 
-function Home() {
-  const { user, isVerified } = useAuth()
-  const [posts, setPosts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [filterType, setFilterType] = useState('all')
+export default function Home() {
+  // Filter States
+  const [type, setType] = useState('all'); // 'all' | 'lost' | 'found'
+  const [category, setCategory] = useState('');
+  const [campusZone, setCampusZone] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const [leaderboard, setLeaderboard] = useState([])
-  const [myPosts, setMyPosts] = useState([])
+  // Data & UI States
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
+  // 1. Debounce Search Input (350ms delay)
   useEffect(() => {
-    let isMounted = true
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchText);
+    }, 350);
 
-    async function fetchPosts() {
-      try {
-        setLoading(true)
-        const data = await getPosts()
-        if (isMounted) setPosts(data)
-      } catch (err) {
-        if (isMounted) setError(getFriendlyErrorMessage(err))
-      } finally {
-        if (isMounted) setLoading(false)
-      }
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  // 2. Server-side Fetch whenever any filter or debounced search changes
+  useEffect(() => {
+    fetchFilteredPosts();
+  }, [type, category, campusZone, debouncedSearch]);
+
+  const fetchFilteredPosts = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // Pass undefined for 'all' or empty strings so the backend doesn't filter by them
+      const queryParams = {
+        type: type === 'all' ? undefined : type,
+        category: category === 'all' || !category ? undefined : category,
+        campusZone: campusZone === 'all' || !campusZone ? undefined : campusZone,
+        q: debouncedSearch.trim() || undefined
+      };
+
+      const data = await getPosts(queryParams);
+      setPosts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error fetching filtered posts:', err);
+      setError(getFriendlyErrorMessage(err));
+      setPosts([]);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    async function fetchLeaderboard() {
-      try {
-        const data = await getLeaderboard()
-        if (isMounted) setLeaderboard(data)
-      } catch (err) {
-        // fail silently — sidebar is non-critical
-      }
-    }
+  // 3. Clear All Filters
+  const handleClearFilters = () => {
+    setType('all');
+    setCategory('');
+    setCampusZone('');
+    setSearchText('');
+    setDebouncedSearch('');
+  };
 
-    async function fetchMyPosts() {
-      if (!user) return
-      try {
-        const data = await getMyPosts()
-        if (isMounted) setMyPosts(data)
-      } catch (err) {
-        // fail silently — sidebar is non-critical
-      }
-    }
-
-    fetchPosts()
-    fetchLeaderboard()
-    fetchMyPosts()
-    return () => { isMounted = false }
-  }, [user])
-
-  const filteredPosts = filterType === 'all'
-    ? posts
-    : posts.filter(p => p.type === filterType)
-
-  const statusStyles = {
-    active: 'bg-blue-100 text-blue-700',
-    claim_pending: 'bg-yellow-100 text-yellow-700',
-    resolved: 'bg-gray-200 text-gray-600'
-  }
+  const hasActiveFilters = type !== 'all' || category !== '' || campusZone !== '' || searchText !== '';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_260px] gap-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      
+      {/* Hero / Header Section */}
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+          Lost & Found Community Feed
+        </h1>
+        <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto">
+          Search, report, and recover missing items across campus with real-time community verification.
+        </p>
+      </div>
 
-        {/* LEFT SIDEBAR — Trust Score Leaderboard */}
-        <aside className="order-2 lg:order-1">
-          <div className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm p-5 sticky top-20">
-            <h3 className="text-sm font-bold text-[#2D2A32] uppercase tracking-wide mb-4 flex items-center gap-2">
-              🏆 Top Contributors
-            </h3>
-            {leaderboard.length === 0 ? (
-              <p className="text-xs text-[#2D2A32]/50">No data yet.</p>
-            ) : (
-              <ul className="space-y-3">
-                {leaderboard.map((u, i) => (
-                  <li key={u._id} className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-[#2D2A32]/40 w-4">{i + 1}</span>
-                    {u.photoUrl ? (
-                      <img src={u.photoUrl} alt={u.name} className="w-8 h-8 rounded-full object-cover" />
-                    ) : (
-                      <span className="w-8 h-8 rounded-full bg-[#D2A066]/30 flex items-center justify-center text-xs font-bold text-[#2D2A32]">
-                        {u.name?.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-[#2D2A32] truncate">{u.name}</p>
-                      <p className="text-[10px] text-[#2D2A32]/50">⭐ {u.trustScore} pts</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
-
-        {/* CENTER — Main Feed */}
-        <main className="order-1 lg:order-2">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-[#2D2A32]">Lost & Found Feed</h2>
-            <p className="text-[#2D2A32]/60 text-sm mt-1">
-              Browse items reported lost or found around campus.
-            </p>
-          </div>
-
-          {user && isVerified && (
-            <Link
-              to="/create-post"
-              className="flex items-center gap-4 bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm hover:shadow-md transition px-5 py-4 mb-6"
-            >
-              <span className="w-11 h-11 rounded-full bg-[#D2A066]/20 text-[#D2A066] flex items-center justify-center text-xl font-bold shrink-0">
-                +
-              </span>
-              <span className="text-[#2D2A32]/40 text-sm">Report a lost or found item...</span>
-            </Link>
-          )}
-
-          <div className="flex gap-2 mb-6">
-            {['all', 'lost', 'found'].map(t => (
+      {/* Filter & Search Bar Container */}
+      <div className="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-2xl p-5 shadow-lg space-y-4">
+        
+        {/* Top Row: Type Tabs & Search Input */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          
+          {/* Lost / Found / All Tabs */}
+          <div className="flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-700/60 self-start md:self-auto">
+            {['all', 'lost', 'found'].map((tab) => (
               <button
-                key={t}
-                onClick={() => setFilterType(t)}
-                className={`px-4 py-2 rounded-full text-sm font-medium capitalize transition ${
-                  filterType === t
-                    ? 'bg-[#2D2A32] text-white'
-                    : 'bg-white text-[#2D2A32]/60 border border-[#2D2A32]/10 hover:bg-[#2D2A32]/5'
+                key={tab}
+                onClick={() => setType(tab)}
+                className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold capitalize transition ${
+                  type === tab
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {t}
+                {tab === 'all' ? 'All Items' : `${tab} Items`}
               </button>
             ))}
           </div>
 
-          {loading && (
-            <p className="text-[#2D2A32]/50 text-sm text-center py-8">Loading posts...</p>
-          )}
-
-          {error && !loading && (
-            <p className="text-red-600 text-sm text-center py-8">{error}</p>
-          )}
-
-          {!loading && !error && filteredPosts.length === 0 && (
-            <p className="text-[#2D2A32]/50 text-sm text-center py-12">No posts to show yet.</p>
-          )}
-
-          {!loading && !error && filteredPosts.length > 0 && (
-            <div className="flex flex-col gap-6">
-              {filteredPosts.map(post => (
-                <div key={post._id} className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm hover:shadow-md transition overflow-hidden">
-                  <Link to={`/posts/${post._id}`} className="block">
-                    <PostCard post={post} />
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
-        </main>
-
-        {/* RIGHT SIDEBAR — Your Recent Post Status */}
-        <aside className="order-3">
-          <div className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm p-5 sticky top-20">
-            <h3 className="text-sm font-bold text-[#2D2A32] uppercase tracking-wide mb-4 flex items-center gap-2">
-              📋 Your Recent Updates
-            </h3>
-            {!user ? (
-              <p className="text-xs text-[#2D2A32]/50">Log in to see your post updates.</p>
-            ) : myPosts.length === 0 ? (
-              <p className="text-xs text-[#2D2A32]/50">No updates yet — you haven't posted anything.</p>
-            ) : (
-              <ul className="space-y-3">
-                {myPosts.slice(0, 5).map(p => (
-                  <li key={p._id} className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-medium text-[#2D2A32] truncate">{p.title}</span>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusStyles[p.status] || ''}`}>
-                      {p.status?.replace('_', ' ')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+          {/* Search Box with Debouncing */}
+          <div className="relative flex-1 max-w-md">
+            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              🔍
+            </span>
+            <input
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search by title, description or keyword..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+            />
+            {searchText && (
+              <button
+                onClick={() => setSearchText('')}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white text-xs"
+                title="Clear search text"
+              >
+                ✕
+              </button>
             )}
           </div>
-        </aside>
+        </div>
+
+        {/* Bottom Row: Category & Campus Zone Dropdowns + Clear Filter Action */}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-700/50">
+          
+          {/* Category Dropdown */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="categorySelect" className="text-xs font-semibold text-slate-400 whitespace-nowrap">
+              Category:
+            </label>
+            <select
+              id="categorySelect"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition capitalize"
+            >
+              <option value="">All Categories</option>
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat.replace('-', ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Campus Zone Dropdown */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="zoneSelect" className="text-xs font-semibold text-slate-400 whitespace-nowrap">
+              Campus Zone:
+            </label>
+            <select
+              id="zoneSelect"
+              value={campusZone}
+              onChange={(e) => setCampusZone(e.target.value)}
+              className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition capitalize"
+            >
+              <option value="">All Campus Zones</option>
+              {CAMPUS_ZONES.map((zone) => (
+                <option key={zone} value={zone}>
+                  {zone}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clear Filters Button (Visible when filters are active) */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleClearFilters}
+              className="ml-auto text-xs text-indigo-400 hover:text-indigo-300 font-semibold underline transition flex items-center gap-1"
+            >
+              <span>↺</span> Clear Filters
+            </button>
+          )}
+        </div>
 
       </div>
-    </div>
-  )
-}
 
-export default Home
+      {/* Error Message */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-sm flex justify-between items-center">
+          <span>⚠️ {error}</span>
+          <button onClick={fetchFilteredPosts} className="underline text-xs hover:text-white font-semibold">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Loading Spinner */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400 space-y-3">
+          <div className="w-9 h-9 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
+          <p className="text-sm font-medium">Filtering community items...</p>
+        </div>
+      ) : posts.length === 0 ? (
+        
+        /* Empty State with Clear Filters Button */
+        <div className="text-center py-16 bg-slate-800/40 border border-dashed border-slate-700/60 rounded-2xl space-y-3 px-4">
+          <p className="text-4xl">🔍</p>
+          <h3 className="text-lg font-bold text-white">No posts match your filters</h3>
+          <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">
+            We couldn't find any items matching your active search keywords or dropdown filters. Try broadening your criteria.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={handleClearFilters}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-md transition"
+            >
+              Clear All Filters
+            </button>
+          </div>
+        </div>
+
+      ) : (
+        
+        /* Posts Grid with Link to /posts/:id */
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {posts.map((post) => (
+            <Link
+              to={`/posts/${post._id}`}
+              key={post._id}
+              className="block group focus:outline-none"
+            >
+              <PostCard post={post} />
+            </Link>
+          ))}
+        </div>
+
+      )}
+
+    </div>
+  );
+}

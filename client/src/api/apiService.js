@@ -1,3 +1,4 @@
+// File: client/src/api/apiService.js
 import axios from 'axios';
 
 export const CONFIG = {
@@ -15,8 +16,11 @@ const apiClient = axios.create({
   timeout: 15000
 });
 
+// Checks both 'token' and 'authToken' so you never get a 401 error
 const getAuthHeader = () => {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+  const token = localStorage.getItem('token') || 
+                sessionStorage.getItem('token') || 
+                localStorage.getItem('authToken');
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
@@ -30,7 +34,7 @@ export async function registerUser({ name, email, password, idFile }, onProgress
   formData.append('email', email);
   formData.append('password', password);
   if (idFile) {
-    formData.append('idPhoto', idFile, idFile.name); // Matches upload.single('idPhoto')
+    formData.append('idPhoto', idFile, idFile.name); // Matches Multer upload.single('idPhoto')
   }
 
   const response = await apiClient.post(CONFIG.REGISTER_ENDPOINT, formData, {
@@ -60,23 +64,42 @@ export async function getMyProfile() {
   return response.data;
 }
 
+/**
+ * PATCH /api/auth/profile-photo — Update user's profile photo (requires Auth token)
+ * (This fixes the missing export error in Profile.jsx!)
+ */
+export async function updateProfilePhoto(fileOrFormData) {
+  let data = fileOrFormData;
+  if (fileOrFormData instanceof File || fileOrFormData instanceof Blob) {
+    const formData = new FormData();
+    formData.append('photo', fileOrFormData);
+    formData.append('profilePhoto', fileOrFormData);
+    data = formData;
+  }
+  const response = await apiClient.patch('/auth/profile-photo', data, {
+    headers: getAuthHeader()
+  });
+  return response.data;
+}
+
 // =========================================================================
 // POSTS APIs
 // =========================================================================
 
 /**
  * POST /api/posts — Create a new post with photo upload (requires Auth token)
- * Expects FormData matching Multer upload.single('photo')
  */
-export async function createPost({ type, title, description, category, campusZone, photoFile }, onProgress = () => { }) {
+export async function createPost({ type, title, description, category, campusZone, photoFile, photo }, onProgress = () => { }) {
   const formData = new FormData();
   formData.append('type', type);
   formData.append('title', title);
   formData.append('description', description);
   if (category) formData.append('category', category);
   if (campusZone) formData.append('campusZone', campusZone);
-  if (photoFile) {
-    formData.append('photo', photoFile, photoFile.name); // Matches upload.single('photo')
+
+  const fileToUpload = photoFile || photo;
+  if (fileToUpload) {
+    formData.append('photo', fileToUpload, fileToUpload.name); // Matches Multer upload.single('photo')
   }
 
   const response = await apiClient.post(CONFIG.POSTS_ENDPOINT, formData, {
@@ -93,15 +116,27 @@ export async function createPost({ type, title, description, category, campusZon
 }
 
 /**
- * GET /api/posts — Browse all community posts (public, no auth needed)
+ * GET /api/posts — Browse all community posts with server-side filters
+ * Supports query params: { type, category, campusZone, q }
  */
-export async function getPosts(filters = {}) {
-  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT, { params: filters });
+export async function getPosts(params = {}) {
+  // Clean params so undefined, null, or 'all' are omitted from query string
+  const cleanParams = {};
+  Object.entries(params).forEach(([key, val]) => {
+    if (val !== undefined && val !== null && val !== '' && val !== 'all') {
+      cleanParams[key] = val;
+    }
+  });
+
+  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT, { params: cleanParams });
   return response.data;
 }
 
-export async function deletePost(postId) {
-  const response = await apiClient.delete(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+/**
+ * GET /api/posts/:id — Fetch a single post detail by ID
+ */
+export async function getPostById(id) {
+  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${id}`, {
     headers: getAuthHeader()
   });
   return response.data;
@@ -126,6 +161,16 @@ export async function updatePostStatus(postId, status) {
     { status },
     { headers: getAuthHeader() }
   );
+  return response.data;
+}
+
+/**
+ * DELETE /api/posts/:id — Delete a post (owner or admin, requires Auth token)
+ */
+export async function deletePost(postId) {
+  const response = await apiClient.delete(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+    headers: getAuthHeader()
+  });
   return response.data;
 }
 
@@ -161,26 +206,4 @@ export function getFriendlyErrorMessage(error) {
   } else {
     return error.message || 'An unexpected error occurred.';
   }
-}
-
-export async function updateProfilePhoto(photoFile) {
-  const formData = new FormData();
-  formData.append('photo', photoFile, photoFile.name);
-
-  const response = await apiClient.patch(
-    `${CONFIG.ME_ENDPOINT}/photo`,
-    formData,
-    { headers: getAuthHeader() }
-  );
-  return response.data;
-}
-
-export async function getLeaderboard() {
-  const response = await apiClient.get('/auth/leaderboard');
-  return response.data;
-}
-
-export async function getPostById(postId) {
-  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`);
-  return response.data;
 }
