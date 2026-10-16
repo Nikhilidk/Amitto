@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getPosts, getMyPosts, getLeaderboard, getFriendlyErrorMessage } from '../api/apiService.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import PostCard from '../components/PostCard.jsx'
+import { CATEGORIES, CAMPUS_ZONES } from '../constants.js' // NEW
 
 function Home() {
   const { user, isVerified } = useAuth()
@@ -11,8 +12,20 @@ function Home() {
   const [error, setError] = useState('')
   const [filterType, setFilterType] = useState('all')
 
+  // NEW: filter state
+  const [category, setCategory] = useState('')
+  const [campusZone, setCampusZone] = useState('')
+  const [searchText, setSearchText] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
   const [leaderboard, setLeaderboard] = useState([])
   const [myPosts, setMyPosts] = useState([])
+
+  // NEW: debounce the search box (350ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchText), 350)
+    return () => clearTimeout(timer)
+  }, [searchText])
 
   useEffect(() => {
     let isMounted = true
@@ -20,7 +33,14 @@ function Home() {
     async function fetchPosts() {
       try {
         setLoading(true)
-        const data = await getPosts()
+        setError('')
+        // CHANGED: server-side filters ('all' / empty values are sent as undefined)
+        const data = await getPosts({
+          type: filterType === 'all' ? undefined : filterType,
+          category: category || undefined,
+          campusZone: campusZone || undefined,
+          q: debouncedSearch.trim() || undefined
+        })
         if (isMounted) setPosts(data)
       } catch (err) {
         if (isMounted) setError(getFriendlyErrorMessage(err))
@@ -52,7 +72,7 @@ function Home() {
     fetchLeaderboard()
     fetchMyPosts()
     return () => { isMounted = false }
-  }, [user])
+  }, [user, filterType, category, campusZone, debouncedSearch]) // CHANGED
 
   const filteredPosts = filterType === 'all'
     ? posts
@@ -63,6 +83,21 @@ function Home() {
     claim_pending: 'bg-yellow-100 text-yellow-700',
     resolved: 'bg-gray-200 text-gray-600'
   }
+
+  // NEW: helpers
+  const hasActiveFilters =
+    filterType !== 'all' || category !== '' || campusZone !== '' || searchText.trim() !== ''
+
+  const clearFilters = () => {
+    setFilterType('all')
+    setCategory('')
+    setCampusZone('')
+    setSearchText('')
+    setDebouncedSearch('')
+  }
+
+  const selectClass =
+    'flex-1 min-w-[140px] px-3 py-2 rounded-lg text-sm bg-white text-[#2D2A32] border border-[#2D2A32]/10 focus:outline-none focus:ring-2 focus:ring-[#D2A066]/50'
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -120,6 +155,42 @@ function Home() {
             </Link>
           )}
 
+          {/* NEW: Search box */}
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="🔍 Search by title or description..."
+            className="w-full px-4 py-2.5 mb-4 rounded-lg text-sm bg-white text-[#2D2A32] border border-[#2D2A32]/10 focus:outline-none focus:ring-2 focus:ring-[#D2A066]/50"
+          />
+
+          {/* NEW: Category + Campus zone dropdowns */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">All categories</option>
+              {CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+
+            <select
+              value={campusZone}
+              onChange={(e) => setCampusZone(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">All campus zones</option>
+              {CAMPUS_ZONES.map(z => (
+                <option key={z} value={z}>
+                  {z === 'unspecified' ? 'Unspecified Zone' : z}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-2 mb-6">
             {['all', 'lost', 'found'].map(t => (
               <button
@@ -144,8 +215,22 @@ function Home() {
             <p className="text-red-600 text-sm text-center py-8">{error}</p>
           )}
 
-          {!loading && !error && filteredPosts.length === 0 && (
+          {/* CHANGED: added !hasActiveFilters */}
+          {!loading && !error && filteredPosts.length === 0 && !hasActiveFilters && (
             <p className="text-[#2D2A32]/50 text-sm text-center py-12">No posts to show yet.</p>
+          )}
+
+          {/* NEW: empty result with active filters */}
+          {!loading && !error && filteredPosts.length === 0 && hasActiveFilters && (
+            <div className="text-center py-12">
+              <p className="text-[#2D2A32]/60 text-sm mb-3">No posts match your filters.</p>
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2 rounded-full text-sm font-medium bg-[#2D2A32] text-white hover:opacity-90 transition"
+              >
+                Clear filters
+              </button>
+            </div>
           )}
 
           {!loading && !error && filteredPosts.length > 0 && (
