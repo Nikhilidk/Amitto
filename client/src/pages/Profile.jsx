@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getMyProfile, getMyPosts, updatePostStatus, updateProfilePhoto } from '../api/apiService';
+import DeleteButton from '../components/DeleteButton.jsx';
 
 export default function Profile() {
   const [user, setUser] = useState(null);
@@ -43,6 +44,13 @@ export default function Profile() {
     } catch (err) {
       showAlert("Failed to update status. Please try again.", "error");
     }
+  };
+
+  // Called by <DeleteButton> after the server confirms the delete.
+  // Stats and tab counts are derived from `posts`, so they update automatically.
+  const handlePostDeleted = (postId) => {
+    setPosts((prev) => prev.filter((p) => p._id !== postId));
+    showAlert('Post deleted', 'success');
   };
 
   const handlePhotoClick = () => {
@@ -180,7 +188,7 @@ export default function Profile() {
               <p className="text-gray-500 text-sm mt-0.5">✉️ {user?.email}</p>
             </div>
 
-            {/* Trust score + member since, right-aligned like the "Edit" button in the reference */}
+            {/* Trust score + member since */}
             <div className="flex flex-col items-start sm:items-end gap-1 pt-2 sm:pt-0">
               <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full">
                 <span>⭐</span>
@@ -273,21 +281,30 @@ export default function Profile() {
                     {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
 
-                  {post.status !== 'resolved' ? (
-                    <button
-                      onClick={() => handleStatusChange(post._id, 'resolved')}
-                      className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition"
-                    >
-                      ✓ Mark Resolved
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleStatusChange(post._id, 'active')}
-                      className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
-                    >
-                      ↺ Re-open
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {post.status !== 'resolved' ? (
+                      <button
+                        onClick={() => handleStatusChange(post._id, 'resolved')}
+                        className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition"
+                      >
+                        ✓ Mark Resolved
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleStatusChange(post._id, 'active')}
+                        className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
+                      >
+                        ↺ Re-open
+                      </button>
+                    )}
+
+                    <DeleteButton
+                      post={post}
+                      className="text-xs px-3 py-1.5"
+                      onDeleted={() => handlePostDeleted(post._id)}
+                      onError={(message) => showAlert(message, 'error')}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
