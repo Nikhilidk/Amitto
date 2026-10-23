@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { getPostById, getFriendlyErrorMessage } from '../api/apiService.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import DeleteButton from '../components/DeleteButton.jsx'
 
 const statusStyles = {
   active: 'bg-blue-100 text-blue-700',
@@ -11,12 +12,16 @@ const statusStyles = {
 
 function PostDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { isVerified } = useAuth()
 
   const [post, setPost] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notFound, setNotFound] = useState(false)
+
+  // Delete failures show inline under the buttons (`error` would replace the whole page)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -27,7 +32,7 @@ function PostDetail() {
         setError('')
         setNotFound(false)
         const data = await getPostById(id)
-        console.log('getPostById returned:', data)  
+        console.log('getPostById returned:', data)
         if (isMounted) setPost(data.post || data)
       } catch (err) {
         if (!isMounted) return
@@ -89,13 +94,13 @@ function PostDetail() {
   }
 
   if (!post) {
-  return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      {backLink}
-      <p className="text-sm text-gray-500 text-center py-12">Couldn't load this post.</p>
-    </div>
-  )
-}
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        {backLink}
+        <p className="text-sm text-gray-500 text-center py-12">Couldn't load this post.</p>
+      </div>
+    )
+  }
 
   const { type, title, description, photoUrl, category, campusZone, status, postedBy, createdAt } = post
 
@@ -163,20 +168,36 @@ function PostDetail() {
             </span>
           </div>
 
-          {/* Action area — placeholder for the claim flow */}
+          {/* Action area */}
           <div className="pt-2">
-            <button
-              type="button"
-              disabled={!isVerified}
-              onClick={() => { /* claim flow goes here in the next feature */ }}
-              className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-            >
-              Claim this item
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                disabled={!isVerified}
+                onClick={() => { /* claim flow goes here in the next feature */ }}
+                className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+              >
+                Claim this item
+              </button>
+
+              <DeleteButton
+                post={post}
+                label="Delete post"
+                className="w-full sm:w-auto px-6 py-2.5 text-sm"
+                onStart={() => setDeleteError('')}
+                onDeleted={() => navigate('/', { replace: true })}
+                onError={setDeleteError}
+              />
+            </div>
+
             {!isVerified && (
               <p className="text-xs text-gray-400 mt-2">
                 Only verified users can claim items.
               </p>
+            )}
+
+            {deleteError && (
+              <p className="text-sm text-red-600 mt-3" role="alert">{deleteError}</p>
             )}
           </div>
         </div>
