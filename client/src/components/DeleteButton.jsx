@@ -1,6 +1,11 @@
-import { useState } from "react"
-import {deletePost, getFriendlyErrorMessage} from "../api/apiService.js" 
-import {useAuth} from "../context/AuthContext.jsx"
+import { useState } from 'react'
+import { deletePost, getFriendlyErrorMessage } from '../api/apiService.js'
+import { useAuth } from '../context/AuthContext.jsx'
+import ConfirmDeleteModal from './confirm_delete_modal.jsx'
+import {
+  shouldSkipDeleteConfirm,
+  setSkipDeleteConfirm
+} from '../util/delete_confirm_preference.jsx'
 
 /**
  * Delete button for a post. Renders nothing unless the logged-in user owns the post
@@ -24,6 +29,7 @@ export default function DeleteButton({
 }) {
   const { user, isAdmin } = useAuth()
   const [deleting, setDeleting] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   // postedBy is a populated object ({ _id, name, ... }) on the detail page,
   // but a plain id string on /posts/mine. Handle both shapes.
@@ -39,9 +45,7 @@ export default function DeleteButton({
 
   if (!isOwner && !isAdmin) return null
 
-  const handleClick = async () => {
-    if (!window.confirm(`Delete "${post.title}"? This cannot be undone.`)) return
-
+  const runDelete = async () => {
     setDeleting(true)
     onStart?.()
     try {
@@ -55,14 +59,41 @@ export default function DeleteButton({
     }
   }
 
+  const handleClick = () => {
+    if (shouldSkipDeleteConfirm(user?.id)) {
+      runDelete()
+    } else {
+      setShowConfirm(true)
+    }
+  }
+
+  const handleConfirm = ({ dontAskAgain }) => {
+    setShowConfirm(false)
+    // Only saved on an actual confirm. Ticking the box and then cancelling saves nothing.
+    if (dontAskAgain) setSkipDeleteConfirm(user?.id, true)
+    runDelete()
+  }
+
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={deleting}
-      className={`bg-white text-red-600 border border-red-200 font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
-    >
-      {deleting ? 'Deleting...' : label}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={deleting}
+        className={`bg-white text-red-600 border border-red-200 font-medium rounded-lg hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      >
+        {deleting ? 'Deleting...' : label}
+      </button>
+
+      {showConfirm && (
+        <ConfirmDeleteModal
+          title="Delete this post?"
+          message={`"${post.title}" will be permanently removed. This cannot be undone.`}
+          confirmLabel="Delete post"
+          onConfirm={handleConfirm}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
+    </>
   )
 }
