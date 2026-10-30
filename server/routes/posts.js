@@ -1,10 +1,14 @@
-const mongoose = require('mongoose'); 
+const mongoose = require('mongoose');
 const express = require('express');
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
 const Post = require('../models/Post');
 const User = require('../models/User');
+const ClaimAttempt = require('../models/ClaimAttempt');
+const { hashAnswer, checkAnswer } = require('../utils/claimAnswer');
 const { verifyToken } = require('../middleware/auth');
+
+const MAX_CLAIM_ATTEMPTS = 3;
 
 const router = express.Router();
 
@@ -33,10 +37,30 @@ const getPublicIdFromUrl = (url) => {
 // POST /api/posts — create a new post (verified users only)
 router.post('/', verifyToken, upload.single('photo'), async (req, res) => {
   try {
-    const { type, title, description, category, campusZone } = req.body;
+    const { type, title, description, category, campusZone, claimQuestion, claimAnswer } = req.body;
 
     if (!type || !title || !description || !req.file) {
       return res.status(400).json({ error: 'Type, title, description, and photo are required' });
+    }
+    if (!['lost', 'found'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be lost or found' });
+    }
+
+    // Found items need a verification question so the real owner can prove ownership
+    let claimFields = {};
+    if (type === 'found') {
+      const q = typeof claimQuestion === 'string' ? claimQuestion.trim() : '';
+      const a = typeof claimAnswer === 'string' ? claimAnswer.trim() : '';
+      if (q.length < 5 || q.length > 200) {
+        return res.status(400).json({ error: 'Add a verification question (5–200 characters)' });
+      }
+      if (!a || a.length > 100) {
+        return res.status(400).json({ error: 'Add the answer to your verification question (max 100 characters)' });
+      }
+      claimFields = {
+        claimQuestion: q,
+        claimAnswerHash: await hashAnswer(a),
+      };
     }
 
     const currentUser = await User.findById(req.user.userId);
@@ -57,11 +81,16 @@ router.post('/', verifyToken, upload.single('photo'), async (req, res) => {
       photoUrl: cloudinaryResult.secure_url,
       category: category || 'other',
       campusZone: campusZone || 'unspecified',
+      ...claimFields,
     });
 
     await newPost.save();
 
-    res.status(201).json({ message: 'Post created successfully', post: newPost });
+    // select:false doesn't apply to a document we just built, so strip the hash manually
+    const safePost = newPost.toObject();
+    delete safePost.claimAnswerHash;
+
+    res.status(201).json({ message: 'Post created successfully', post: safePost });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error creating post' });
@@ -99,6 +128,7 @@ router.get('/', async (req, res) => {
     }
 
     const posts = await Post.find(filter)
+      .select('-claimedBy')
       .sort({ createdAt: -1 })
       .populate('postedBy', 'name photoUrl trustScore');
 
@@ -128,6 +158,7 @@ router.get('/:id', async (req, res) => {
     }
 
     const post = await Post.findById(req.params.id)
+      .select('-claimedBy')
       .populate('postedBy', 'name photoUrl trustScore');
 
     if (!post) {
@@ -141,13 +172,129 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/posts/:id/status — update a post's status (owner or admin)
+// POST /api/posts/:id/claim — answer the verification question to claim a found item
+router.post('/:id/claim', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    const { answer } = req.body;
+    if (typeof answer !== 'string' || !answer.trim() || answer.length > 100) {
+      return res.status(400).json({ error: 'Please enter an answer' });
+    }
+
+    const currentUser = await User.findById(req.user.userId);
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (currentUser.verificationStatus !== 'approved') {
+      return res.status(403).json({ error: 'Account verification required to claim items' });
+    }
+
+    const post = await Post.findById(req.params.id).select('+claimAnswerHash');
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    if (post.type !== 'found' || !post.claimAnswerHash) {
+      return res.status(400).json({ error: 'This post cannot be claimed' });
+    }
+    if (post.postedBy.toString() === req.user.userId) {
+      return res.status(403).json({ error: 'You cannot claim your own post' });
+    }
+    if (post.status !== 'active') {
+      return res.status(409).json({ error: 'This item is no longer available to claim' });
+    }
+
+    // Reserve the attempt BEFORE checking the answer, atomically,
+    // so parallel requests can't get extra tries
+    const attempt = await ClaimAttempt.findOneAndUpdate(
+      { post: post._id, user: req.user.userId },
+      { $inc: { count: 1 } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    if (attempt.count > MAX_CLAIM_ATTEMPTS) {
+      return res.status(429).json({ error: 'No attempts left for this item', attemptsLeft: 0 });
+    }
+
+    const correct = await checkAnswer(answer, post.claimAnswerHash);
+    if (!correct) {
+      return res.status(403).json({
+        error: 'Incorrect answer',
+        attemptsLeft: MAX_CLAIM_ATTEMPTS - attempt.count,
+      });
+    }
+
+    // Conditional update: if two correct claimants arrive together, only one wins
+    const updated = await Post.findOneAndUpdate(
+      { _id: post._id, status: 'active' },
+      { status: 'claim_pending', claimedBy: req.user.userId },
+      { returnDocument: 'after' }
+    ).select('-claimedBy');
+
+    if (!updated) {
+      return res.status(409).json({ error: 'Someone else just claimed this item' });
+    }
+
+    res.status(200).json({ message: 'Claim accepted', post: updated });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error processing claim' });
+  }
+});
+
+// POST /api/posts/:id/claim/release — reject the pending claim and reopen the post (owner or admin)
+router.post('/:id/claim/release', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    if (post.postedBy.toString() !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only the post owner or an admin can reject a claim' });
+    }
+    if (post.status !== 'claim_pending') {
+      return res.status(409).json({ error: 'There is no pending claim on this post' });
+    }
+
+    const rejectedUserId = post.claimedBy;
+
+    post.status = 'active';
+    post.claimedBy = null;
+    await post.save();
+
+    // The rejected claimant can't simply try again
+    if (rejectedUserId) {
+      await ClaimAttempt.findOneAndUpdate(
+        { post: post._id, user: rejectedUserId },
+        { $set: { count: MAX_CLAIM_ATTEMPTS } },
+        { upsert: true }
+      );
+    }
+
+    res.status(200).json({ message: 'Claim rejected, post is active again', post });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error rejecting claim' });
+  }
+});
+
+// PATCH /api/posts/:id/status — mark resolved / re-open (owner or admin)
+// claim_pending can only be set by the claim route; a rejected claim goes through /claim/release
 router.patch('/:id/status', verifyToken, async (req, res) => {
   try {
-    const { status } = req.body;
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
 
-    if (!['active', 'claim_pending', 'resolved'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status value' });
+    const { status } = req.body;
+    if (!['active', 'resolved'].includes(status)) {
+      return res.status(400).json({ error: 'Status can only be set to active or resolved' });
     }
 
     const post = await Post.findById(req.params.id);
@@ -157,6 +304,19 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
 
     if (post.postedBy.toString() !== req.user.userId && req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Only the post owner or an admin can update its status' });
+    }
+
+    if (post.status === status) {
+      return res.status(409).json({ error: `Post is already ${status}` });
+    }
+
+    if (status === 'active') {
+      if (post.status === 'claim_pending') {
+        return res.status(409).json({ error: 'Use "reject claim" to reopen a post with a pending claim' });
+      }
+      if (post.claimedBy) {
+        return res.status(409).json({ error: 'A post resolved through a claim cannot be re-opened' });
+      }
     }
 
     post.status = status;
@@ -186,6 +346,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
     }
 
     await post.deleteOne();
+    await ClaimAttempt.deleteMany({ post: post._id });
 
     // Best-effort image cleanup: a Cloudinary failure shouldn't undo the delete
     try {

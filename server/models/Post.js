@@ -37,6 +37,20 @@ const postSchema = new mongoose.Schema({
     enum: ['active', 'claim_pending', 'resolved'],
     default: 'active',
   },
+  claimQuestion: {
+    type: String,
+    trim: true,
+    maxlength: 200,
+  },
+  claimAnswerHash: {
+    type: String,
+    select: false, // never returned by default; only the claim route asks for it
+  },
+  claimedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Post', postSchema);
