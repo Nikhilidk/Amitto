@@ -6,7 +6,7 @@ const Post = require('../models/Post');
 const User = require('../models/User');
 const ClaimAttempt = require('../models/ClaimAttempt');
 const { hashAnswer, checkAnswer } = require('../utils/claimAnswer');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, optionalAuth } = require('../middleware/auth');
 
 const MAX_CLAIM_ATTEMPTS = 3;
 
@@ -142,7 +142,9 @@ router.get('/', async (req, res) => {
 // GET /api/posts/mine — posts created by the logged-in user
 router.get('/mine', verifyToken, async (req, res) => {
   try {
-    const posts = await Post.find({ postedBy: req.user.userId }).sort({ createdAt: -1 });
+        const posts = await Post.find({ postedBy: req.user.userId })
+      .populate('claimedBy', 'name photoUrl')
+      .sort({ createdAt: -1 });
     res.status(200).json(posts);
   } catch (err) {
     console.error(err);
@@ -150,22 +152,28 @@ router.get('/mine', verifyToken, async (req, res) => {
   }
 });
 
-// GET /api/posts/:id — single post details (public)
-router.get('/:id', async (req, res) => {
+// GET /api/posts/:id — single post details (public; token optional)
+router.get('/:id', optionalAuth, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(400).json({ error: 'Invalid post ID' });
     }
 
     const post = await Post.findById(req.params.id)
-      .select('-claimedBy')
       .populate('postedBy', 'name photoUrl trustScore');
 
     if (!post) {
       return res.status(404).json({ error: 'Post not found' });
     }
 
-    res.status(200).json(post);
+    // Tell the claimant it's their claim, without exposing who claimed to everyone else
+    const result = post.toObject();
+    result.claimedByMe = Boolean(
+      req.user && post.claimedBy && post.claimedBy.toString() === req.user.userId
+    );
+    delete result.claimedBy;
+
+    res.status(200).json(result);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error fetching post' });
