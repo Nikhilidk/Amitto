@@ -26,4 +26,17 @@ const verifyAdmin = (req, res, next) => {
     });
 };
 
-module.exports = { verifyToken, verifyAdmin };
+// Like verifyToken, but never blocks: no token or a bad token just means "logged out"
+const optionalAuth = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            req.user = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
+        } catch (err) {
+            // expired or invalid token: treat as logged out
+        }
+    }
+    next();
+};
+
+module.exports = { verifyToken, verifyAdmin, optionalAuth };
