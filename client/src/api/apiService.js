@@ -67,14 +67,22 @@ export async function getMyProfile() {
 /**
  * POST /api/posts — Create a new post with photo upload (requires Auth token)
  * Expects FormData matching Multer upload.single('photo')
+ * Found posts must also send claimQuestion and claimAnswer.
  */
-export async function createPost({ type, title, description, category, campusZone, photoFile }, onProgress = () => { }) {
+export async function createPost(
+  { type, title, description, category, campusZone, claimQuestion, claimAnswer, photoFile },
+  onProgress = () => { }
+) {
   const formData = new FormData();
   formData.append('type', type);
   formData.append('title', title);
   formData.append('description', description);
   if (category) formData.append('category', category);
   if (campusZone) formData.append('campusZone', campusZone);
+  if (type === 'found') {
+    if (claimQuestion) formData.append('claimQuestion', claimQuestion);
+    if (claimAnswer) formData.append('claimAnswer', claimAnswer);
+  }
   if (photoFile) {
     formData.append('photo', photoFile, photoFile.name); // Matches upload.single('photo')
   }
@@ -129,6 +137,31 @@ export async function updatePostStatus(postId, status) {
   return response.data;
 }
 
+/**
+ * POST /api/posts/:id/claim — Claim a found item by answering the owner's question.
+ * Errors carry { error, attemptsLeft } in err.response.data (use getClaimError).
+ */
+export async function claimPost(postId, answer) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/claim`,
+    { answer },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/posts/:id/claim/release — Owner rejects the pending claim.
+ */
+export async function releaseClaim(postId) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/claim/release`,
+    {},
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
 // =========================================================================
 // ADMIN APIs
 // =========================================================================
@@ -150,9 +183,10 @@ export async function updateUserStatus(userId, status) {
 }
 
 // =========================================================================
-// ERROR HELPER
+// ERROR HELPERS
 // =========================================================================
 
+// Passes the server's own message through (error.response.data.error)
 export function getFriendlyErrorMessage(error) {
   if (error.response && error.response.data) {
     return error.response.data.error || error.response.data.message || `Server Error (${error.response.status}).`;
@@ -161,6 +195,15 @@ export function getFriendlyErrorMessage(error) {
   } else {
     return error.message || 'An unexpected error occurred.';
   }
+}
+
+// For claim calls: returns the status code, the server message and attemptsLeft
+export function getClaimError(error) {
+  return {
+    status: error.response?.status,
+    message: getFriendlyErrorMessage(error),
+    attemptsLeft: error.response?.data?.attemptsLeft
+  };
 }
 
 export async function updateProfilePhoto(photoFile) {
@@ -180,7 +223,10 @@ export async function getLeaderboard() {
   return response.data;
 }
 
+// Sends the token when logged in, so the backend can set claimedByMe
 export async function getPostById(postId) {
-  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`);
+  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+    headers: getAuthHeader()
+  });
   return response.data;
 }
