@@ -5,6 +5,13 @@ const cloudinary = require('../config/cloudinary');
 const Post = require('../models/Post');
 const User = require('../models/User');
 const ClaimAttempt = require('../models/ClaimAttempt');
+const Conversation = require('../models/Conversation');
+const Message = require('../models/Message');
+const {
+  notifyConversationCreated,
+  notifyConversationClosed,
+  notifyConversationRemoved,
+} = require('../socket');
 const { hashAnswer, checkAnswer } = require('../utils/claimAnswer');
 const { verifyToken, optionalAuth } = require('../middleware/auth');
 
@@ -32,6 +39,16 @@ const uploadToCloudinary = (fileBuffer) => {
 const getPublicIdFromUrl = (url) => {
   const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[^./]+$/);
   return match ? match[1] : null;
+};
+
+// Removes a post's chat and all of its messages (used on reject and on delete).
+// Returns the deleted conversation (or null) so callers can notify its participants.
+const deleteConversationForPost = async (postId) => {
+  const conversation = await Conversation.findOneAndDelete({ post: postId });
+  if (conversation) {
+    await Message.deleteMany({ conversation: conversation._id });
+  }
+  return conversation;
 };
 
 // POST /api/posts — create a new post (verified users only)
@@ -142,7 +159,7 @@ router.get('/', async (req, res) => {
 // GET /api/posts/mine — posts created by the logged-in user
 router.get('/mine', verifyToken, async (req, res) => {
   try {
-        const posts = await Post.find({ postedBy: req.user.userId })
+    const posts = await Post.find({ postedBy: req.user.userId })
       .populate('claimedBy', 'name photoUrl')
       .sort({ createdAt: -1 });
     res.status(200).json(posts);
@@ -244,7 +261,21 @@ router.post('/:id/claim', verifyToken, async (req, res) => {
       return res.status(409).json({ error: 'Someone else just claimed this item' });
     }
 
-    res.status(200).json({ message: 'Claim accepted', post: updated });
+    // Open the chat between the owner and the successful claimant
+    const conversation = await Conversation.findOneAndUpdate(
+      { post: post._id },
+      { $set: { owner: post.postedBy, claimant: req.user.userId, status: 'open' } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    // Tell both users (live) that the chat exists
+    notifyConversationCreated(req.app.get('io'), conversation);
+
+    res.status(200).json({
+      message: 'Claim accepted',
+      post: updated,
+      conversationId: conversation._id,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error processing claim' });
@@ -275,6 +306,11 @@ router.post('/:id/claim/release', verifyToken, async (req, res) => {
     post.status = 'active';
     post.claimedBy = null;
     await post.save();
+
+    // Rejected claimant loses chat access: remove the conversation and its messages,
+    // and kick both users out of the live room
+    const removed = await deleteConversationForPost(post._id);
+    notifyConversationRemoved(req.app.get('io'), removed);
 
     // The rejected claimant can't simply try again
     if (rejectedUserId) {
@@ -330,6 +366,16 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
     post.status = status;
     await post.save();
 
+    // Resolved posts keep their chat as read-only history
+    if (status === 'resolved') {
+      const closed = await Conversation.findOneAndUpdate(
+        { post: post._id },
+        { status: 'closed' },
+        { returnDocument: 'after' }
+      );
+      notifyConversationClosed(req.app.get('io'), closed);
+    }
+
     res.status(200).json({ message: 'Status updated successfully', post });
   } catch (err) {
     console.error(err);
@@ -355,6 +401,9 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     await post.deleteOne();
     await ClaimAttempt.deleteMany({ post: post._id });
+
+    const removed = await deleteConversationForPost(post._id);
+    notifyConversationRemoved(req.app.get('io'), removed);
 
     // Best-effort image cleanup: a Cloudinary failure shouldn't undo the delete
     try {
