@@ -4,6 +4,11 @@ import { useAuth } from '../context/AuthContext';
 import { createPost, getFriendlyErrorMessage } from '../api/apiService.js';
 import { CATEGORIES, CAMPUS_ZONES } from '../constants.js';
 
+// Mirror the backend limits for found posts
+const QUESTION_MIN = 5;
+const QUESTION_MAX = 200;
+const ANSWER_MAX = 100;
+
 export default function CreatePost() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -20,6 +25,8 @@ export default function CreatePost() {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('other');
   const [campusZone, setCampusZone] = useState('unspecified');
+  const [claimQuestion, setClaimQuestion] = useState('');
+  const [claimAnswer, setClaimAnswer] = useState('');
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
 
@@ -72,6 +79,20 @@ export default function CreatePost() {
       return;
     }
 
+    const question = claimQuestion.trim();
+    const answer = claimAnswer.trim();
+
+    if (type === 'found') {
+      if (question.length < QUESTION_MIN || question.length > QUESTION_MAX) {
+        setErrorMessage(`Verification question must be ${QUESTION_MIN}–${QUESTION_MAX} characters.`);
+        return;
+      }
+      if (!answer || answer.length > ANSWER_MAX) {
+        setErrorMessage(`Answer is required and must be at most ${ANSWER_MAX} characters.`);
+        return;
+      }
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -81,6 +102,9 @@ export default function CreatePost() {
         description: description.trim(),
         category,
         campusZone,
+        // Only sent for found posts
+        claimQuestion: type === 'found' ? question : undefined,
+        claimAnswer: type === 'found' ? answer : undefined,
         photoFile: photo,
       });
 
@@ -241,6 +265,52 @@ export default function CreatePost() {
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-slate-50 focus:bg-white"
               />
             </div>
+
+            {/* Found posts only: verification question + answer */}
+            {type === 'found' && (
+              <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-4">
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Something only the real owner would know, like a brand, a color or a sticker.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                    Verification question <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. What sticker is on the back of the laptop?"
+                    value={claimQuestion}
+                    onChange={(e) => setClaimQuestion(e.target.value)}
+                    maxLength={QUESTION_MAX}
+                    minLength={QUESTION_MIN}
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1 text-right">
+                    {claimQuestion.trim().length}/{QUESTION_MAX} (min {QUESTION_MIN})
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                    Answer <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="The correct answer to your question"
+                    value={claimAnswer}
+                    onChange={(e) => setClaimAnswer(e.target.value)}
+                    maxLength={ANSWER_MAX}
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1 text-right">
+                    {claimAnswer.trim().length}/{ANSWER_MAX}
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">

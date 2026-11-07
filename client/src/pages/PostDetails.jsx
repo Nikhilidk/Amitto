@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { getPostById, getFriendlyErrorMessage } from '../api/apiService.js'
+import { getPostById, claimPost, getClaimError, getFriendlyErrorMessage } from '../api/apiService.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import DeleteButton from '../components/DeleteButton.jsx'
 
@@ -13,7 +13,7 @@ const statusStyles = {
 function PostDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isVerified } = useAuth()
+  const { user, isVerified } = useAuth()
 
   const [post, setPost] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -23,32 +23,77 @@ function PostDetail() {
   // Delete failures show inline under the buttons (`error` would replace the whole page)
   const [deleteError, setDeleteError] = useState('')
 
-  useEffect(() => {
-    let isMounted = true
+  // Claim box state
+  const [answer, setAnswer] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [claimFeedback, setClaimFeedback] = useState(null) // { type: 'success' | 'error', text }
+  const [lockedOut, setLockedOut] = useState(false)
 
-    async function fetchPost() {
-      try {
-        setLoading(true)
-        setError('')
-        setNotFound(false)
-        const data = await getPostById(id)
-        console.log('getPostById returned:', data)
-        if (isMounted) setPost(data.post || data)
-      } catch (err) {
-        if (!isMounted) return
-        if (err.response?.status === 404) {
-          setNotFound(true)
-        } else {
-          setError(getFriendlyErrorMessage(err))
-        }
-      } finally {
-        if (isMounted) setLoading(false)
+  // silent = refetch without the full-page spinner (used after a 409)
+  const loadPost = useCallback(async ({ silent = false } = {}) => {
+    try {
+      if (!silent) setLoading(true)
+      setError('')
+      setNotFound(false)
+      const data = await getPostById(id)
+      setPost(data.post || data)
+    } catch (err) {
+      if (silent) return
+      if (err.response?.status === 404) {
+        setNotFound(true)
+      } else {
+        setError(getFriendlyErrorMessage(err))
       }
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    setAnswer('')
+    setClaimFeedback(null)
+    setLockedOut(false)
+    loadPost()
+  }, [loadPost])
+
+  const handleClaim = async (e) => {
+    e.preventDefault()
+    const trimmed = answer.trim()
+    if (!trimmed) {
+      setClaimFeedback({ type: 'error', text: 'Please enter your answer.' })
+      return
     }
 
-    fetchPost()
-    return () => { isMounted = false }
-  }, [id])
+    setSubmitting(true)
+    setClaimFeedback(null)
+    try {
+      await claimPost(post._id, trimmed)
+      // 200: update the post in state (GET /:id only gives claimedByMe, never claimedBy)
+      setPost((prev) => ({ ...prev, status: 'claim_pending', claimedByMe: true }))
+      setAnswer('')
+      setClaimFeedback({ type: 'success', text: 'Claim accepted. The owner will contact you.' })
+    } catch (err) {
+      const { status, message, attemptsLeft } = getClaimError(err)
+
+      if (status === 429 || (status === 403 && attemptsLeft === 0)) {
+        // Locked out: hide the form
+        setLockedOut(true)
+        setClaimFeedback(null)
+      } else if (status === 403 && typeof attemptsLeft === 'number') {
+        setClaimFeedback({
+          type: 'error',
+          text: `Incorrect answer, ${attemptsLeft} attempt${attemptsLeft === 1 ? '' : 's'} left`
+        })
+      } else if (status === 409) {
+        setClaimFeedback({ type: 'error', text: 'This item is no longer available' })
+        loadPost({ silent: true })
+      } else {
+        setClaimFeedback({ type: 'error', text: message })
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const backLink = (
     <Link
@@ -102,13 +147,35 @@ function PostDetail() {
     )
   }
 
-  const { type, title, description, photoUrl, category, campusZone, status, postedBy, createdAt } = post
+  const { type, title, description, photoUrl, category, campusZone, status, postedBy, createdAt, claimQuestion, claimedByMe } = post
 
   const typeStyles = type === 'lost'
     ? 'bg-red-100 text-red-700'
     : 'bg-green-100 text-green-700'
 
   const posterName = postedBy?.name || 'Unknown'
+
+  // Claim box logic (found posts only)
+  const isFound = type === 'found'
+  const ownerId = postedBy && typeof postedBy === 'object' ? postedBy._id : postedBy
+  const isOwner = Boolean(user?.id) && user.id === ownerId
+
+  const claimBoxVisible = isFound && status === 'active' && Boolean(user) && isVerified && !isOwner
+
+  // Message under the claim area, depending on the situation
+  let statusNote = null
+  if (isFound && status === 'claim_pending') {
+    if (claimedByMe) {
+      // The success message already says this right after claiming
+      statusNote = claimFeedback?.type === 'success'
+        ? null
+        : 'Your claim was accepted. The owner will contact you.'
+    } else {
+      statusNote = 'A claim is pending for this item.'
+    }
+  } else if (isFound && status === 'resolved') {
+    statusNote = 'This item has been resolved.'
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
@@ -169,17 +236,82 @@ function PostDetail() {
           </div>
 
           {/* Action area */}
-          <div className="pt-2">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                type="button"
-                disabled={!isVerified}
-                onClick={() => { /* claim flow goes here in the next feature */ }}
-                className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-              >
-                Claim this item
-              </button>
+          <div className="pt-2 flex flex-col gap-4">
 
+            {/* Claim box: found + active, logged in, verified, not the owner */}
+            {claimBoxVisible && (
+              !claimQuestion ? (
+                <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
+                  This item can't be claimed online.
+                </p>
+              ) : lockedOut ? (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3" role="alert">
+                  No attempts left for this item
+                </p>
+              ) : (
+                <form onSubmit={handleClaim} className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                    Is this your item? Answer the owner's question
+                  </p>
+                  <p className="text-sm font-medium text-gray-900">{claimQuestion}</p>
+                  <input
+                    type="text"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    maxLength={100}
+                    placeholder="Your answer"
+                    disabled={submitting}
+                    className="w-full px-4 py-2.5 rounded-lg text-sm bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? 'Checking...' : 'Claim this item'}
+                  </button>
+                </form>
+              )
+            )}
+
+            {/* Logged out */}
+            {isFound && status === 'active' && !user && (
+              <p className="text-sm text-gray-600">
+                <Link to="/login" className="text-blue-600 font-medium hover:underline">Log in to claim</Link>
+                {' '}this item.
+              </p>
+            )}
+
+            {/* Logged in but not verified */}
+            {isFound && status === 'active' && user && !isVerified && !isOwner && (
+              <p className="text-xs text-gray-400">
+                Only verified users can claim items.
+              </p>
+            )}
+
+            {/* Result of the last claim attempt */}
+            {claimFeedback && (
+              <p
+                className={`text-sm rounded-xl px-4 py-3 ${
+                  claimFeedback.type === 'success'
+                    ? 'text-green-700 bg-green-50 border border-green-100'
+                    : 'text-red-600 bg-red-50 border border-red-100'
+                }`}
+                role={claimFeedback.type === 'success' ? 'status' : 'alert'}
+              >
+                {claimFeedback.text}
+              </p>
+            )}
+
+            {/* claim_pending / resolved note */}
+            {statusNote && (
+              <p className="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
+                {statusNote}
+              </p>
+            )}
+
+            {/* Delete (renders nothing unless owner or admin) */}
+            <div className="empty:hidden">
               <DeleteButton
                 post={post}
                 label="Delete post"
@@ -190,14 +322,8 @@ function PostDetail() {
               />
             </div>
 
-            {!isVerified && (
-              <p className="text-xs text-gray-400 mt-2">
-                Only verified users can claim items.
-              </p>
-            )}
-
             {deleteError && (
-              <p className="text-sm text-red-600 mt-3" role="alert">{deleteError}</p>
+              <p className="text-sm text-red-600" role="alert">{deleteError}</p>
             )}
           </div>
         </div>

@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getMyProfile, getMyPosts, updatePostStatus, updateProfilePhoto } from '../api/apiService';
+import {
+  getMyProfile,
+  getMyPosts,
+  updatePostStatus,
+  updateProfilePhoto,
+  releaseClaim,
+  getFriendlyErrorMessage
+} from '../api/apiService';
 import DeleteButton from '../components/DeleteButton.jsx';
 
 export default function Profile() {
@@ -11,6 +18,7 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('all');
   const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [busyId, setBusyId] = useState(null); // post currently being updated
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -35,14 +43,40 @@ export default function Profile() {
     }
   };
 
-  const handleStatusChange = async (postId, newStatus) => {
+  // Reload only the posts list (used after every status change)
+  const refreshPosts = async () => {
     try {
-      await updatePostStatus(postId, newStatus);
-      showAlert(`Post status updated to ${newStatus.toUpperCase()}`, 'success');
       const updatedPosts = await getMyPosts();
       setPosts(updatedPosts);
     } catch (err) {
-      showAlert("Failed to update status. Please try again.", "error");
+      // keep the current list if the refresh fails
+    }
+  };
+
+  const handleStatusChange = async (postId, newStatus, successMessage) => {
+    setBusyId(postId);
+    try {
+      await updatePostStatus(postId, newStatus);
+      showAlert(successMessage || `Post status updated to ${newStatus.toUpperCase()}`, 'success');
+    } catch (err) {
+      // Show the server's message (for example the 409), not a generic one
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
+      await refreshPosts();
+      setBusyId(null);
+    }
+  };
+
+  const handleRejectClaim = async (postId) => {
+    setBusyId(postId);
+    try {
+      await releaseClaim(postId);
+      showAlert('Claim rejected. The item is active again.', 'success');
+    } catch (err) {
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
+      await refreshPosts();
+      setBusyId(null);
     }
   };
 
@@ -116,6 +150,60 @@ export default function Profile() {
   const activeCount = posts.filter(p => p.status === 'active').length;
   const pendingCount = posts.filter(p => p.status === 'claim_pending').length;
   const resolvedCount = posts.filter(p => p.status === 'resolved').length;
+
+  // Status buttons that follow the claim rules
+  const renderStatusButtons = (post) => {
+    const busy = busyId === post._id;
+
+    if (post.status === 'active') {
+      return (
+        <button
+          onClick={() => handleStatusChange(post._id, 'resolved')}
+          disabled={busy}
+          className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ✓ Mark Resolved
+        </button>
+      );
+    }
+
+    if (post.status === 'claim_pending') {
+      return (
+        <>
+          <button
+            onClick={() => handleStatusChange(post._id, 'resolved', 'Handover confirmed. Post resolved.')}
+            disabled={busy}
+            className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ✓ Confirm handover
+          </button>
+          <button
+            onClick={() => handleRejectClaim(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ✕ Reject claim
+          </button>
+        </>
+      );
+    }
+
+    if (post.status === 'resolved') {
+      // Resolved after a claim: can't be re-opened
+      if (post.claimedBy) return null;
+      return (
+        <button
+          onClick={() => handleStatusChange(post._id, 'active')}
+          disabled={busy}
+          className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ↺ Re-open
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -276,27 +364,20 @@ export default function Profile() {
                   <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">📍 {post.campusZone || 'Unspecified'}</span>
                 </div>
 
-                <div className="flex items-center justify-between mt-4">
+                {/* Who claimed it (claimedBy is { _id, name, photoUrl } from /mine) */}
+                {post.status === 'claim_pending' && post.claimedBy && (
+                  <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-3">
+                    Claimed by <strong>{post.claimedBy.name || 'a user'}</strong>
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
                   <span className="text-gray-400 text-[11px]">
                     {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
 
-                  <div className="flex items-center gap-2">
-                    {post.status !== 'resolved' ? (
-                      <button
-                        onClick={() => handleStatusChange(post._id, 'resolved')}
-                        className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition"
-                      >
-                        ✓ Mark Resolved
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleStatusChange(post._id, 'active')}
-                        className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
-                      >
-                        ↺ Re-open
-                      </button>
-                    )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {renderStatusButtons(post)}
 
                     <DeleteButton
                       post={post}
