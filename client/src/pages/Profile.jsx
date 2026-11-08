@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   getMyProfile,
   getMyPosts,
   updatePostStatus,
   updateProfilePhoto,
   releaseClaim,
+  getConversationByPost,
   getFriendlyErrorMessage
 } from '../api/apiService';
 import DeleteButton from '../components/DeleteButton.jsx';
@@ -20,6 +21,7 @@ export default function Profile() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [busyId, setBusyId] = useState(null); // post currently being updated
   const fileInputRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchProfileAndPosts();
@@ -76,6 +78,19 @@ export default function Profile() {
       showAlert(getFriendlyErrorMessage(err), 'error');
     } finally {
       await refreshPosts();
+      setBusyId(null);
+    }
+  };
+
+  // Open the chat for a specific post
+  const handleOpenChat = async (postId) => {
+    setBusyId(postId);
+    try {
+      const { conversationId } = await getConversationByPost(postId);
+      navigate(`/messages/${conversationId}`);
+    } catch (err) {
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
       setBusyId(null);
     }
   };
@@ -171,6 +186,13 @@ export default function Profile() {
       return (
         <>
           <button
+            onClick={() => handleOpenChat(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            💬 Message claimant
+          </button>
+          <button
             onClick={() => handleStatusChange(post._id, 'resolved', 'Handover confirmed. Post resolved.')}
             disabled={busy}
             className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -189,8 +211,18 @@ export default function Profile() {
     }
 
     if (post.status === 'resolved') {
-      // Resolved after a claim: can't be re-opened
-      if (post.claimedBy) return null;
+      // Resolved after a claim: can't be re-opened, but the chat stays readable
+      if (post.claimedBy) {
+        return (
+          <button
+            onClick={() => handleOpenChat(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            💬 View chat
+          </button>
+        );
+      }
       return (
         <button
           onClick={() => handleStatusChange(post._id, 'active')}
