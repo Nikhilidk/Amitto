@@ -3,11 +3,13 @@ import axios from 'axios';
 export const CONFIG = {
   USE_MOCK: false,
   API_BASE_URL: 'http://localhost:5000/api',
+  SOCKET_URL: 'http://localhost:5000',
   REGISTER_ENDPOINT: '/auth/register',
   LOGIN_ENDPOINT: '/auth/login',
   ME_ENDPOINT: '/auth/me',
   POSTS_ENDPOINT: '/posts',
-  MY_POSTS_ENDPOINT: '/posts/mine'
+  MY_POSTS_ENDPOINT: '/posts/mine',
+  CONVERSATIONS_ENDPOINT: '/conversations',
 };
 
 const apiClient = axios.create({
@@ -229,4 +231,43 @@ export async function getPostById(postId) {
     headers: getAuthHeader()
   });
   return response.data;
+}
+
+// =========================================================================
+// CHAT APIs
+// =========================================================================
+
+export async function getMyConversations() {
+  const response = await apiClient.get(CONFIG.CONVERSATIONS_ENDPOINT, {
+    headers: getAuthHeader()
+  });
+  return response.data; // array of inbox items
+}
+
+// Returns { conversationId, status }. Throws 404 if you have no chat for this post.
+export async function getConversationByPost(postId) {
+  const response = await apiClient.get(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/by-post/${postId}`,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+// Returns { status, messages, hasMore }. Pass `before` (a message _id) for older pages.
+export async function getMessages(conversationId, { before, limit } = {}) {
+  const response = await apiClient.get(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/${conversationId}/messages`,
+    { headers: getAuthHeader(), params: { before, limit } }
+  );
+  return response.data;
+}
+
+// REST fallback, used when the socket is down
+export async function sendMessage(conversationId, text) {
+  const response = await apiClient.post(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/${conversationId}/messages`,
+    { text },
+    { headers: getAuthHeader() }
+  );
+  return response.data; // { message }
 }

@@ -9,6 +9,7 @@ dotenv.config();
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const postRoutes = require('./routes/posts');
+const conversationRoutes = require('./routes/conversations');
 const { initSocket } = require('./socket');
 
 const app = express();
@@ -28,11 +29,11 @@ const server = http.createServer(app);
 const io = initSocket(server);
 app.set('io', io);
 
-// route
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/posts', postRoutes);
-app.use('/api/conversations', require('./routes/conversations'));
+app.use('/api/conversations', conversationRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {

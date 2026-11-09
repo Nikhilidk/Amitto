@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { getPostById, claimPost, getClaimError, getFriendlyErrorMessage } from '../api/apiService.js'
+import { getPostById, claimPost, getClaimError, getFriendlyErrorMessage, getConversationByPost } from '../api/apiService.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import DeleteButton from '../components/DeleteButton.jsx'
 
@@ -28,6 +28,7 @@ function PostDetail() {
   const [submitting, setSubmitting] = useState(false)
   const [claimFeedback, setClaimFeedback] = useState(null) // { type: 'success' | 'error', text }
   const [lockedOut, setLockedOut] = useState(false)
+  const [conversationId, setConversationId]=useState(null)
 
   // silent = refetch without the full-page spinner (used after a 409)
   const loadPost = useCallback(async ({ silent = false } = {}) => {
@@ -53,8 +54,24 @@ function PostDetail() {
     setAnswer('')
     setClaimFeedback(null)
     setLockedOut(false)
+    setConversationId(null)
     loadPost()
   }, [loadPost])
+
+  // find the chat for the owner / accepted claimant.
+  useEffect(() => {
+    if (!post || !user || post.type !== 'found' || conversationId) return
+    const ownerId = post.postedBy && typeof post.postedBy === 'object' ? post.postedBy._id : post.postedBy
+    const hasChat = post.status === 'claim_pending' || post.status === 'resolved'
+    if (!hasChat || !(user.id === ownerId || post.claimedByMe)) return
+
+    let cancelled = false
+    getConversationByPost(post._id)
+      .then((d) => { if (!cancelled) setConversationId(d.conversationId) })
+      .catch(() => {}) // no chat (e.g. resolved without a claim): just no button
+    return () => { cancelled = true }
+  }, [post, user, conversationId])
+
 
   const handleClaim = async (e) => {
     e.preventDefault()
@@ -67,7 +84,7 @@ function PostDetail() {
     setSubmitting(true)
     setClaimFeedback(null)
     try {
-      await claimPost(post._id, trimmed)
+      const data = await claimPost(post._id, trimmed)
       // 200: update the post in state (GET /:id only gives claimedByMe, never claimedBy)
       setPost((prev) => ({ ...prev, status: 'claim_pending', claimedByMe: true }))
       setAnswer('')
@@ -169,7 +186,7 @@ function PostDetail() {
       // The success message already says this right after claiming
       statusNote = claimFeedback?.type === 'success'
         ? null
-        : 'Your claim was accepted. The owner will contact you.'
+        : 'Your claim was accepted. You can chat with the owner now.'
     } else {
       statusNote = 'A claim is pending for this item.'
     }
@@ -300,6 +317,12 @@ function PostDetail() {
                 role={claimFeedback.type === 'success' ? 'status' : 'alert'}
               >
                 {claimFeedback.text}
+                {/* link straight to the chat after a successful claim */}
+                {claimFeedback.type === 'success' && conversationId && (
+                  <Link to={`/messages/${conversationId}`} className="ml-2 font-semibold underline">
+                    Open chat →
+                  </Link>
+                )}
               </p>
             )}
 
@@ -308,6 +331,16 @@ function PostDetail() {
               <p className="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
                 {statusNote}
               </p>
+            )}
+
+            {/* Message button for the owner and the accepted claimant */}
+            {conversationId && (isOwner || claimedByMe) && (
+              <Link
+                to={`/messages/${conversationId}`}
+                className="w-full sm:w-auto text-center bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              >
+                💬 {status === 'resolved' ? 'View chat' : isOwner ? 'Message claimant' : 'Message owner'}
+              </Link>
             )}
 
             {/* Delete (renders nothing unless owner or admin) */}
