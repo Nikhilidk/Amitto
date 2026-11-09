@@ -1,10 +1,10 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import {useChat} from '../context/ChatContext.jsx';
-
+import { useChat } from '../context/ChatContext.jsx';
 
 function Navbar() {
   const { user, logout, isAdmin } = useAuth();
+  const { hasUnread } = useChat();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -60,6 +60,20 @@ function Navbar() {
               className="text-[#F5EFE6]/80 hover:text-[#F5EFE6] transition"
             >
               Create Post
+            </Link>
+
+            {/* Messages link */}
+            <Link
+              to="/messages"
+              className="relative text-[#F5EFE6]/80 hover:text-[#F5EFE6] transition"
+            >
+              Messages
+              {hasUnread && (
+                <span
+                  className="absolute -top-1 -right-2.5 w-2 h-2 rounded-full bg-[#D2A066]"
+                  aria-label="Unread messages"
+                />
+              )}
             </Link>
 
             {/* Profile Navigation Link */}
