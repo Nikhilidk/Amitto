@@ -2,8 +2,8 @@ import axios from 'axios';
 
 export const CONFIG = {
   USE_MOCK: false,
-  API_BASE_URL: 'http://localhost:5000/api',
-  SOCKET_URL: 'http://localhost:5000',
+  API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  SOCKET_URL: import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000',
   REGISTER_ENDPOINT: '/auth/register',
   LOGIN_ENDPOINT: '/auth/login',
   ME_ENDPOINT: '/auth/me',
