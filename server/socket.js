@@ -8,6 +8,9 @@ const userRoom = (userId) => `user:${userId}`;
 // Mongoose docs / ObjectIds -> plain JSON-safe objects
 const plain = (doc) => JSON.parse(JSON.stringify(doc));
 
+// Accept one conversation or a list (a lost post can have several chats)
+const toList = (x) => [].concat(x || []).filter(Boolean);
+
 // Live message to the open chat, plus an inbox nudge to both users
 const broadcastMessage = (io, conversation, message) => {
   if (!io) return;
@@ -24,21 +27,45 @@ const emitToParticipants = (io, conversation, event) => {
     .emit(event, { conversationId: conversation._id.toString(), postId: conversation.post.toString() });
 };
 
-// A claim was accepted: tell both users a chat exists
+// A chat was opened (claim accepted, or a finder accepted): tell both users
 const notifyConversationCreated = (io, conversation) => {
-  if (io && conversation) emitToParticipants(io, conversation, 'conversation:created');
+  if (!io) return;
+  toList(conversation).forEach((c) => emitToParticipants(io, c, 'conversation:created'));
 };
 
-// Resolved: chat becomes read-only
+// Resolved: chats become read-only
 const notifyConversationClosed = (io, conversation) => {
-  if (io && conversation) emitToParticipants(io, conversation, 'conversation:closed');
+  if (!io) return;
+  toList(conversation).forEach((c) => emitToParticipants(io, c, 'conversation:closed'));
 };
 
-// Rejected claim or deleted post: chat is gone, kick everyone out of the room
+// Rejected claim or deleted post: chats are gone, kick everyone out of the rooms
 const notifyConversationRemoved = (io, conversation) => {
-  if (!io || !conversation) return;
-  emitToParticipants(io, conversation, 'conversation:removed');
-  io.in(convRoom(conversation._id)).socketsLeave(convRoom(conversation._id));
+  if (!io) return;
+  toList(conversation).forEach((c) => {
+    emitToParticipants(io, c, 'conversation:removed');
+    io.in(convRoom(c._id)).socketsLeave(convRoom(c._id));
+  });
+};
+
+// A finder commented on a lost post: ping the poster
+const notifyCommentNew = (io, ownerId, comment) => {
+  if (!io) return;
+  io.to(userRoom(ownerId.toString())).emit('comment:new', {
+    postId: comment.post.toString(),
+    commentId: comment._id.toString(),
+  });
+};
+
+// A comment was accepted or declined: ping the finder
+const notifyCommentUpdated = (io, comment) => {
+  if (!io) return;
+  io.to(userRoom(comment.author.toString())).emit('comment:updated', {
+    postId: comment.post.toString(),
+    commentId: comment._id.toString(),
+    status: comment.status,
+    conversationId: comment.conversation ? comment.conversation.toString() : null,
+  });
 };
 
 const initSocket = (httpServer) => {
@@ -111,4 +138,6 @@ module.exports = {
   notifyConversationCreated,
   notifyConversationClosed,
   notifyConversationRemoved,
+  notifyCommentNew,
+  notifyCommentUpdated,
 };

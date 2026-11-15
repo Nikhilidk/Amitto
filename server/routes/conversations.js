@@ -52,24 +52,29 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/conversations/by-post/:postId — find my chat for a post (for the "Message" button)
+// GET /api/conversations/by-post/:postId — my chat(s) for a post (for the "Message" button)
+// A lost post's owner can have several chats (one per accepted finder), so a list is returned too.
 router.get('/by-post/:postId', async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.postId)) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    const conversation = await Conversation.findOne({ post: req.params.postId });
     const userId = req.user.userId;
-    const isParticipant =
-      conversation &&
-      (conversation.owner.toString() === userId || conversation.claimant.toString() === userId);
+    const conversations = await Conversation.find({
+      post: req.params.postId,
+      $or: [{ owner: userId }, { claimant: userId }],
+    }).sort({ lastMessageAt: -1 });
 
-    if (!isParticipant) {
+    if (conversations.length === 0) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
-    res.status(200).json({ conversationId: conversation._id, status: conversation.status });
+    res.status(200).json({
+      conversationId: conversations[0]._id,
+      status: conversations[0].status,
+      conversations: conversations.map((c) => ({ conversationId: c._id, status: c.status })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error finding conversation' });

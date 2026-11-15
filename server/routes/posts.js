@@ -7,6 +7,7 @@ const User = require('../models/User');
 const ClaimAttempt = require('../models/ClaimAttempt');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const Comment = require('../models/Comment');
 const {
   notifyConversationCreated,
   notifyConversationClosed,
@@ -41,14 +42,16 @@ const getPublicIdFromUrl = (url) => {
   return match ? match[1] : null;
 };
 
-// Removes a post's chat and all of its messages (used on reject and on delete).
-// Returns the deleted conversation (or null) so callers can notify its participants.
+// Removes ALL chats on a post (a lost post can have several) and their messages.
+// Returns the deleted conversations so callers can notify their participants.
 const deleteConversationForPost = async (postId) => {
-  const conversation = await Conversation.findOneAndDelete({ post: postId });
-  if (conversation) {
-    await Message.deleteMany({ conversation: conversation._id });
+  const conversations = await Conversation.find({ post: postId });
+  if (conversations.length > 0) {
+    const ids = conversations.map((c) => c._id);
+    await Message.deleteMany({ conversation: { $in: ids } });
+    await Conversation.deleteMany({ _id: { $in: ids } });
   }
-  return conversation;
+  return conversations;
 };
 
 // POST /api/posts — create a new post (verified users only)
@@ -263,8 +266,8 @@ router.post('/:id/claim', verifyToken, async (req, res) => {
 
     // Open the chat between the owner and the successful claimant
     const conversation = await Conversation.findOneAndUpdate(
-      { post: post._id },
-      { $set: { owner: post.postedBy, claimant: req.user.userId, status: 'open' } },
+      { post: post._id, claimant: req.user.userId },
+      { $set: { owner: post.postedBy, status: 'open' } },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -366,14 +369,14 @@ router.patch('/:id/status', verifyToken, async (req, res) => {
     post.status = status;
     await post.save();
 
-    // Resolved posts keep their chat as read-only history
     if (status === 'resolved') {
-      const closed = await Conversation.findOneAndUpdate(
-        { post: post._id },
-        { status: 'closed' },
-        { returnDocument: 'after' }
-      );
-      notifyConversationClosed(req.app.get('io'), closed);
+      // All chats on the post become read-only history
+      const convs = await Conversation.find({ post: post._id });
+      await Conversation.updateMany({ post: post._id }, { status: 'closed' });
+      notifyConversationClosed(req.app.get('io'), convs);
+    } else {
+      // Re-opened (only possible for never-claimed posts): chats are writable again
+      await Conversation.updateMany({ post: post._id }, { status: 'open' });
     }
 
     res.status(200).json({ message: 'Status updated successfully', post });
@@ -401,6 +404,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     await post.deleteOne();
     await ClaimAttempt.deleteMany({ post: post._id });
+    await Comment.deleteMany({ post: post._id });
 
     const removed = await deleteConversationForPost(post._id);
     notifyConversationRemoved(req.app.get('io'), removed);
