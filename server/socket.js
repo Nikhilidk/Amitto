@@ -60,7 +60,9 @@ const notifyCommentNew = (io, ownerId, comment) => {
 // A comment was accepted or declined: ping the finder
 const notifyCommentUpdated = (io, comment) => {
   if (!io) return;
-  io.to(userRoom(comment.author.toString())).emit('comment:updated', {
+  const authorId = comment.author?._id || comment.author;
+  if (!authorId) return;
+  io.to(userRoom(authorId.toString())).emit('comment:updated', {
     postId: comment.post.toString(),
     commentId: comment._id.toString(),
     status: comment.status,

@@ -107,8 +107,7 @@ router.get('/posts/:postId/comments', verifyToken, async (req, res) => {
   }
 });
 
-// Loads a comment and its post, and only lets the post owner through.
-// Anyone else gets a 404 so they can't tell whether the comment exists.
+// Loads a comment and its post, and only lets the post owner through
 const loadOwnedComment = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     res.status(404).json({ error: 'Comment not found' });
@@ -134,7 +133,7 @@ router.post('/comments/:id/accept', verifyToken, async (req, res) => {
     if (!loaded) return;
     const { comment, post } = loaded;
 
-    // Flip pending -> accepted atomically so a double click can't accept twice
+    // Flip pending -> accepted atomically
     const accepted = await Comment.findOneAndUpdate(
       { _id: comment._id, status: 'pending' },
       { status: 'accepted' },
@@ -144,7 +143,7 @@ router.post('/comments/:id/accept', verifyToken, async (req, res) => {
       return res.status(409).json({ error: 'This comment was already handled' });
     }
 
-    // Count after flipping; if over the cap, undo
+    // Chat cap check
     const acceptedCount = await Comment.countDocuments({ post: post._id, status: 'accepted' });
     if (acceptedCount > MAX_ACCEPTED_FINDERS) {
       await Comment.updateOne({ _id: comment._id }, { status: 'pending' });
@@ -161,11 +160,12 @@ router.post('/comments/:id/accept', verifyToken, async (req, res) => {
         { $set: { owner: post.postedBy, status: 'open' } },
         { upsert: true, returnDocument: 'after' }
       );
+      // Populate author so frontend retains finder's name, photo & trust score
       updated = await Comment.findByIdAndUpdate(
         comment._id,
         { conversation: conversation._id },
         { returnDocument: 'after' }
-      );
+      ).populate('author', 'name photoUrl trustScore');
     } catch (err) {
       await Comment.updateOne({ _id: comment._id }, { status: 'pending', conversation: null });
       throw err;
@@ -182,17 +182,19 @@ router.post('/comments/:id/accept', verifyToken, async (req, res) => {
   }
 });
 
-// POST /api/comments/:id/decline — owner declines; the finder just sees a neutral status
+// POST /api/comments/:id/decline — owner declines
 router.post('/comments/:id/decline', verifyToken, async (req, res) => {
   try {
     const loaded = await loadOwnedComment(req, res);
     if (!loaded) return;
 
+    // Populate author so frontend retains finder's name, photo & trust score
     const declined = await Comment.findOneAndUpdate(
       { _id: loaded.comment._id, status: 'pending' },
       { status: 'declined' },
       { returnDocument: 'after' }
-    );
+    ).populate('author', 'name photoUrl trustScore');
+
     if (!declined) {
       return res.status(409).json({ error: 'This comment was already handled' });
     }
@@ -206,7 +208,7 @@ router.post('/comments/:id/decline', verifyToken, async (req, res) => {
   }
 });
 
-// DELETE /api/comments/:id — author withdraws a comment that is still pending
+// DELETE /api/comments/:id — author withdraws pending comment
 router.delete('/comments/:id', verifyToken, async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getMyProfile,
@@ -10,6 +10,7 @@ import {
   getFriendlyErrorMessage
 } from '../api/apiService';
 import DeleteButton from '../components/DeleteButton.jsx';
+import { useChat } from '../context/ChatContext.jsx';
 
 export default function Profile() {
   const [user, setUser] = useState(null);
@@ -22,10 +23,7 @@ export default function Profile() {
   const [busyId, setBusyId] = useState(null); // post currently being updated
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    fetchProfileAndPosts();
-  }, []);
+  const { socket } = useChat();
 
   const fetchProfileAndPosts = async () => {
     setLoading(true);
@@ -45,15 +43,27 @@ export default function Profile() {
     }
   };
 
+  useEffect(() => {
+    fetchProfileAndPosts();
+  }, []);
+
   // Reload only the posts list (used after every status change)
   const refreshPosts = async () => {
     try {
       const updatedPosts = await getMyPosts();
       setPosts(updatedPosts);
     } catch (err) {
-      // keep the current list if the refresh fails
+      console.error('Failed to refresh posts:', err);
     }
   };
+
+  // Live: a new finder comment arrived, so reload the list and the badge count updates
+  useEffect(() => {
+    if (!socket) return;
+    const onNewComment = () => refreshPosts();
+    socket.on('comment:new', onNewComment);
+    return () => socket.off('comment:new', onNewComment);
+  }, [socket]);
 
   const handleStatusChange = async (postId, newStatus, successMessage) => {
     setBusyId(postId);
@@ -169,6 +179,52 @@ export default function Profile() {
   // Status buttons that follow the claim rules
   const renderStatusButtons = (post) => {
     const busy = busyId === post._id;
+
+    // Lost posts can have several chats, so link to the post page instead of one chat
+    if (post.type === 'lost') {
+      const reviewLink = (label) => (
+        <Link
+          to={`/posts/${post._id}`}
+          className="text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition"
+        >
+          {label}
+        </Link>
+      );
+
+      if (post.status === 'active') {
+        return (
+          <>
+            {reviewLink('💬 Review comments')}
+            <button
+              onClick={() => {
+                if (window.confirm('Mark this post as resolved? Any open chats with finders will become read-only.')) {
+                  handleStatusChange(post._id, 'resolved');
+                }
+              }}
+              disabled={busy}
+              className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ✓ Mark Resolved
+            </button>
+          </>
+        );
+      }
+
+      if (post.status === 'resolved') {
+        return (
+          <>
+            {reviewLink('💬 View chats')}
+            <button
+              onClick={() => handleStatusChange(post._id, 'active')}
+              disabled={busy}
+              className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ↺ Re-open
+            </button>
+          </>
+        );
+      }
+    }
 
     if (post.status === 'active') {
       return (
@@ -400,6 +456,13 @@ export default function Profile() {
                 {post.status === 'claim_pending' && post.claimedBy && (
                   <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-3">
                     Claimed by <strong>{post.claimedBy.name || 'a user'}</strong>
+                  </p>
+                )}
+
+                {/* Pending finder comments on a lost post (needs pendingCommentCount from /posts/mine) */}
+                {post.type === 'lost' && post.pendingCommentCount > 0 && (
+                  <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-3 py-2 mt-3">
+                    🔔 <strong>{post.pendingCommentCount}</strong> new finder comment{post.pendingCommentCount === 1 ? '' : 's'}
                   </p>
                 )}
 

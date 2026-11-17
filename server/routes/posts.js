@@ -165,7 +165,26 @@ router.get('/mine', verifyToken, async (req, res) => {
     const posts = await Post.find({ postedBy: req.user.userId })
       .populate('claimedBy', 'name photoUrl')
       .sort({ createdAt: -1 });
-    res.status(200).json(posts);
+    const lostPostIds = posts
+      .filter((post) => post.type === 'lost')
+      .map((post) => post._id);
+    const pendingCounts = lostPostIds.length
+      ? await Comment.aggregate([
+          { $match: { post: { $in: lostPostIds }, status: 'pending' } },
+          { $group: { _id: '$post', count: { $sum: 1 } } },
+        ])
+      : [];
+    const countByPost = new Map(
+      pendingCounts.map(({ _id, count }) => [_id.toString(), count])
+    );
+
+    res.status(200).json(posts.map((post) => {
+      const result = post.toObject();
+      if (post.type === 'lost') {
+        result.pendingCommentCount = countByPost.get(post._id.toString()) || 0;
+      }
+      return result;
+    }));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error fetching your posts' });

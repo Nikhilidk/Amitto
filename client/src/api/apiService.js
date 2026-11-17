@@ -10,6 +10,7 @@ export const CONFIG = {
   POSTS_ENDPOINT: '/posts',
   MY_POSTS_ENDPOINT: '/posts/mine',
   CONVERSATIONS_ENDPOINT: '/conversations',
+  COMMENTS_ENDPOINT: '/comments',
 };
 
 const apiClient = axios.create({
@@ -119,6 +120,7 @@ export async function deletePost(postId) {
 
 /**
  * GET /api/posts/mine — Fetch posts created by logged-in user (requires Auth token)
+ * Lost posts also carry pendingCommentCount.
  */
 export async function getMyPosts() {
   const response = await apiClient.get(CONFIG.MY_POSTS_ENDPOINT, {
@@ -165,6 +167,73 @@ export async function releaseClaim(postId) {
 }
 
 // =========================================================================
+// LOST-POST COMMENT APIs
+// =========================================================================
+
+/**
+ * POST /api/posts/:postId/comments — A finder comments on a lost post.
+ * Returns the created comment.
+ * Errors: 409 (already commented / post no longer open), 429 (too many comments).
+ */
+export async function createComment(postId, text) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/comments`,
+    { text },
+    { headers: getAuthHeader() }
+  );
+  return response.data.comment || response.data;
+}
+
+/**
+ * GET /api/posts/:postId/comments — Returns { isOwner, maxAccepted, comments }.
+ * Poster: everyone's comments (author name, photo, trust score). Finder: only their own.
+ */
+export async function getComments(postId) {
+  const response = await apiClient.get(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/comments`,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/comments/:id/accept — Poster opens a chat with this finder.
+ * Returns { comment, conversationId }.
+ * Errors: 409 (already handled, chat cap reached, post no longer open).
+ */
+export async function acceptComment(commentId) {
+  const response = await apiClient.post(
+    `${CONFIG.COMMENTS_ENDPOINT}/${commentId}/accept`,
+    {},
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/comments/:id/decline — Poster declines. Returns the comment.
+ */
+export async function declineComment(commentId) {
+  const response = await apiClient.post(
+    `${CONFIG.COMMENTS_ENDPOINT}/${commentId}/decline`,
+    {},
+    { headers: getAuthHeader() }
+  );
+  return response.data.comment || response.data;
+}
+
+/**
+ * DELETE /api/comments/:id — Finder withdraws a comment that is still pending.
+ */
+export async function withdrawComment(commentId) {
+  const response = await apiClient.delete(
+    `${CONFIG.COMMENTS_ENDPOINT}/${commentId}`,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+// =========================================================================
 // ADMIN APIs
 // =========================================================================
 
@@ -205,6 +274,14 @@ export function getClaimError(error) {
     status: error.response?.status,
     message: getFriendlyErrorMessage(error),
     attemptsLeft: error.response?.data?.attemptsLeft
+  };
+}
+
+// For comment calls: status code (409 / 429 ...) plus the server's own message
+export function getCommentError(error) {
+  return {
+    status: error.response?.status,
+    message: getFriendlyErrorMessage(error)
   };
 }
 
