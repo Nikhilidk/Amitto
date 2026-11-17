@@ -1,14 +1,25 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 
 function Navbar() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
+
+  const isRegister = pathname === '/register';
+  const isLogin = pathname === '/login';
+
+  // Shared pill styles so the highlight animates smoothly between the two
+  const pillBase =
+    'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out';
+  const pillActive = 'bg-[#F5EFE6] text-[#2D2A32] shadow-sm';
+  const pillInactive =
+    'bg-transparent text-[#F5EFE6]/80 hover:text-[#F5EFE6] hover:bg-[#F5EFE6]/10';
 
   return (
     <nav className="bg-[#2D2A32] text-[#F5EFE6] px-6 py-4 shadow-md border-b border-[#2D2A32]/10 sticky top-0 z-50 backdrop-blur-md bg-opacity-95 flex justify-between items-center font-sans">
@@ -35,16 +46,16 @@ function Navbar() {
         )}
 
         {!user && (
-          <div className="flex items-center gap-3">
-            <Link 
-              to="/register" 
-              className="bg-[#F5EFE6] text-[#2D2A32] hover:bg-[#e8decb] px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-sm"
+          <div className="flex items-center gap-2">
+            <Link
+              to="/register"
+              className={`${pillBase} ${isRegister ? pillActive : pillInactive}`}
             >
               Register
             </Link>
-            <Link 
-              to="/login" 
-              className="text-[#F5EFE6]/80 hover:text-[#F5EFE6] px-3 py-1.5 rounded-lg text-xs font-bold transition"
+            <Link
+              to="/login"
+              className={`${pillBase} ${isLogin ? pillActive : pillInactive}`}
             >
               Login
             </Link>
