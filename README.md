@@ -240,9 +240,12 @@ Possible future improvements include:
 - Recommendations based on item categories.
 - More detailed campus and location filters.
 - Improvements to claim verification.
-- Notifications and reporting tools.
+- Notifications on SMSs or email and reporting tools.
 - More automated moderation support.
 - A mobile application.
+- Gamify by adding trust scores and leaderboard.
+- add profile dashboard.
+- AI powered protection against fake posts and users
 
 ## Contributing
 
