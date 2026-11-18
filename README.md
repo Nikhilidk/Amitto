@@ -221,7 +221,10 @@ No license has been specified for this project. All rights are retained by the r
 
 ## Author
 
-Developed by [Nikhilidk](https://github.com/Nikhilidk).
+Developed by:
+1. [Nikhil Negi](https://github.com/Nikhilidk).
+2. [Ausaaf Siddiqui](https://github.com/ausaafffff).
+3. [Sanyam Baranwal](https://github.com/sanyam-2006)
 
 ## Live Demo
 
