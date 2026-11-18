@@ -17,9 +17,12 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <Routes>
-        {/* Public Routes */}
-        <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<Login />} />
+        {/* Public Auth Routes wrapped in AuthLayout */}
+        <Route element={<AuthLayout />}>
+          <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<Login />} />
+        </Route>
+
         <Route path="/posts/:id" element={<PostDetails />} />
 
         {/* Protected Student Route */}
