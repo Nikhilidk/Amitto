@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getMyProfile, getMyPosts, updatePostStatus, updateProfilePhoto } from '../api/apiService';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  getMyProfile,
+  getMyPosts,
+  updatePostStatus,
+  updateProfilePhoto,
+  releaseClaim,
+  getConversationByPost,
+  getFriendlyErrorMessage
+} from '../api/apiService';
+import DeleteButton from '../components/DeleteButton.jsx';
 
 export default function Profile() {
   const [user, setUser] = useState(null);
@@ -9,7 +19,9 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('all');
   const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [busyId, setBusyId] = useState(null); // post currently being updated
   const fileInputRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchProfileAndPosts();
@@ -33,15 +45,61 @@ export default function Profile() {
     }
   };
 
-  const handleStatusChange = async (postId, newStatus) => {
+  // Reload only the posts list (used after every status change)
+  const refreshPosts = async () => {
     try {
-      await updatePostStatus(postId, newStatus);
-      showAlert(`Post status updated to ${newStatus.toUpperCase()}`, 'success');
       const updatedPosts = await getMyPosts();
       setPosts(updatedPosts);
     } catch (err) {
-      showAlert("Failed to update status. Please try again.", "error");
+      // keep the current list if the refresh fails
     }
+  };
+
+  const handleStatusChange = async (postId, newStatus, successMessage) => {
+    setBusyId(postId);
+    try {
+      await updatePostStatus(postId, newStatus);
+      showAlert(successMessage || `Post status updated to ${newStatus.toUpperCase()}`, 'success');
+    } catch (err) {
+      // Show the server's message (for example the 409), not a generic one
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
+      await refreshPosts();
+      setBusyId(null);
+    }
+  };
+
+  const handleRejectClaim = async (postId) => {
+    setBusyId(postId);
+    try {
+      await releaseClaim(postId);
+      showAlert('Claim rejected. The item is active again.', 'success');
+    } catch (err) {
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
+      await refreshPosts();
+      setBusyId(null);
+    }
+  };
+
+  // Open the chat for a specific post
+  const handleOpenChat = async (postId) => {
+    setBusyId(postId);
+    try {
+      const { conversationId } = await getConversationByPost(postId);
+      navigate(`/messages/${conversationId}`);
+    } catch (err) {
+      showAlert(getFriendlyErrorMessage(err), 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Called by <DeleteButton> after the server confirms the delete.
+  // Stats and tab counts are derived from `posts`, so they update automatically.
+  const handlePostDeleted = (postId) => {
+    setPosts((prev) => prev.filter((p) => p._id !== postId));
+    showAlert('Post deleted', 'success');
   };
 
   const handlePhotoClick = () => {
@@ -107,6 +165,77 @@ export default function Profile() {
   const activeCount = posts.filter(p => p.status === 'active').length;
   const pendingCount = posts.filter(p => p.status === 'claim_pending').length;
   const resolvedCount = posts.filter(p => p.status === 'resolved').length;
+
+  // Status buttons that follow the claim rules
+  const renderStatusButtons = (post) => {
+    const busy = busyId === post._id;
+
+    if (post.status === 'active') {
+      return (
+        <button
+          onClick={() => handleStatusChange(post._id, 'resolved')}
+          disabled={busy}
+          className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ✓ Mark Resolved
+        </button>
+      );
+    }
+
+    if (post.status === 'claim_pending') {
+      return (
+        <>
+          <button
+            onClick={() => handleOpenChat(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            💬 Message claimant
+          </button>
+          <button
+            onClick={() => handleStatusChange(post._id, 'resolved', 'Handover confirmed. Post resolved.')}
+            disabled={busy}
+            className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ✓ Confirm handover
+          </button>
+          <button
+            onClick={() => handleRejectClaim(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ✕ Reject claim
+          </button>
+        </>
+      );
+    }
+
+    if (post.status === 'resolved') {
+      // Resolved after a claim: can't be re-opened, but the chat stays readable
+      if (post.claimedBy) {
+        return (
+          <button
+            onClick={() => handleOpenChat(post._id)}
+            disabled={busy}
+            className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            💬 View chat
+          </button>
+        );
+      }
+      return (
+        <button
+          onClick={() => handleStatusChange(post._id, 'active')}
+          disabled={busy}
+          className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          ↺ Re-open
+        </button>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -179,7 +308,7 @@ export default function Profile() {
               <p className="text-gray-500 text-sm mt-0.5">✉️ {user?.email}</p>
             </div>
 
-            {/* Trust score + member since, right-aligned like the "Edit" button in the reference */}
+            {/* Trust score + member since */}
             <div className="flex flex-col items-start sm:items-end gap-1 pt-2 sm:pt-0">
               <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full">
                 <span>⭐</span>
@@ -241,7 +370,9 @@ export default function Profile() {
           {filteredPosts.map(post => (
             <div key={post._id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="relative">
-                <img src={post.photoUrl} alt={post.title} className="w-full h-40 object-cover" />
+                <Link to={`/posts/${post._id}`}>
+                  <img src={post.photoUrl} alt={post.title} className="w-full h-40 object-cover" />
+                </Link>
                 <span
                   className={`absolute top-2 left-2 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase ${
                     post.type === 'lost' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
@@ -255,7 +386,9 @@ export default function Profile() {
               </div>
 
               <div className="p-4">
-                <h3 className="font-semibold text-gray-900 text-sm">{post.title}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">
+                  <Link to={`/posts/${post._id}`} className="hover:underline">{post.title}</Link>
+                </h3>
                 <p className="text-gray-500 text-xs mt-1 line-clamp-2">{post.description}</p>
 
                 <div className="flex flex-wrap gap-2 mt-3">
@@ -263,26 +396,28 @@ export default function Profile() {
                   <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">📍 {post.campusZone || 'Unspecified'}</span>
                 </div>
 
-                <div className="flex items-center justify-between mt-4">
+                {/* Who claimed it (claimedBy is { _id, name, photoUrl } from /mine) */}
+                {post.status === 'claim_pending' && post.claimedBy && (
+                  <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-3">
+                    Claimed by <strong>{post.claimedBy.name || 'a user'}</strong>
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
                   <span className="text-gray-400 text-[11px]">
                     {new Date(post.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
 
-                  {post.status !== 'resolved' ? (
-                    <button
-                      onClick={() => handleStatusChange(post._id, 'resolved')}
-                      className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition"
-                    >
-                      ✓ Mark Resolved
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleStatusChange(post._id, 'active')}
-                      className="text-xs font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
-                    >
-                      ↺ Re-open
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {renderStatusButtons(post)}
+
+                    <DeleteButton
+                      post={post}
+                      className="text-xs px-3 py-1.5"
+                      onDeleted={() => handlePostDeleted(post._id)}
+                      onError={(message) => showAlert(message, 'error')}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

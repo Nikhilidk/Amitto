@@ -2,12 +2,14 @@ import axios from 'axios';
 
 export const CONFIG = {
   USE_MOCK: false,
-  API_BASE_URL: 'http://localhost:5000/api',
+  API_BASE_URL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  SOCKET_URL: import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000',
   REGISTER_ENDPOINT: '/auth/register',
   LOGIN_ENDPOINT: '/auth/login',
   ME_ENDPOINT: '/auth/me',
   POSTS_ENDPOINT: '/posts',
-  MY_POSTS_ENDPOINT: '/posts/mine'
+  MY_POSTS_ENDPOINT: '/posts/mine',
+  CONVERSATIONS_ENDPOINT: '/conversations',
 };
 
 const apiClient = axios.create({
@@ -67,14 +69,22 @@ export async function getMyProfile() {
 /**
  * POST /api/posts — Create a new post with photo upload (requires Auth token)
  * Expects FormData matching Multer upload.single('photo')
+ * Found posts must also send claimQuestion and claimAnswer.
  */
-export async function createPost({ type, title, description, category, campusZone, photoFile }, onProgress = () => { }) {
+export async function createPost(
+  { type, title, description, category, campusZone, claimQuestion, claimAnswer, photoFile },
+  onProgress = () => { }
+) {
   const formData = new FormData();
   formData.append('type', type);
   formData.append('title', title);
   formData.append('description', description);
   if (category) formData.append('category', category);
   if (campusZone) formData.append('campusZone', campusZone);
+  if (type === 'found') {
+    if (claimQuestion) formData.append('claimQuestion', claimQuestion);
+    if (claimAnswer) formData.append('claimAnswer', claimAnswer);
+  }
   if (photoFile) {
     formData.append('photo', photoFile, photoFile.name); // Matches upload.single('photo')
   }
@@ -95,8 +105,15 @@ export async function createPost({ type, title, description, category, campusZon
 /**
  * GET /api/posts — Browse all community posts (public, no auth needed)
  */
-export async function getPosts() {
-  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT);
+export async function getPosts(filters = {}) {
+  const response = await apiClient.get(CONFIG.POSTS_ENDPOINT, { params: filters });
+  return response.data;
+}
+
+export async function deletePost(postId) {
+  const response = await apiClient.delete(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+    headers: getAuthHeader()
+  });
   return response.data;
 }
 
@@ -117,6 +134,31 @@ export async function updatePostStatus(postId, status) {
   const response = await apiClient.patch(
     `${CONFIG.POSTS_ENDPOINT}/${postId}/status`,
     { status },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/posts/:id/claim — Claim a found item by answering the owner's question.
+ * Errors carry { error, attemptsLeft } in err.response.data (use getClaimError).
+ */
+export async function claimPost(postId, answer) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/claim`,
+    { answer },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/posts/:id/claim/release — Owner rejects the pending claim.
+ */
+export async function releaseClaim(postId) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/claim/release`,
+    {},
     { headers: getAuthHeader() }
   );
   return response.data;
@@ -143,9 +185,10 @@ export async function updateUserStatus(userId, status) {
 }
 
 // =========================================================================
-// ERROR HELPER
+// ERROR HELPERS
 // =========================================================================
 
+// Passes the server's own message through (error.response.data.error)
 export function getFriendlyErrorMessage(error) {
   if (error.response && error.response.data) {
     return error.response.data.error || error.response.data.message || `Server Error (${error.response.status}).`;
@@ -154,6 +197,15 @@ export function getFriendlyErrorMessage(error) {
   } else {
     return error.message || 'An unexpected error occurred.';
   }
+}
+
+// For claim calls: returns the status code, the server message and attemptsLeft
+export function getClaimError(error) {
+  return {
+    status: error.response?.status,
+    message: getFriendlyErrorMessage(error),
+    attemptsLeft: error.response?.data?.attemptsLeft
+  };
 }
 
 export async function updateProfilePhoto(photoFile) {
@@ -171,4 +223,51 @@ export async function updateProfilePhoto(photoFile) {
 export async function getLeaderboard() {
   const response = await apiClient.get('/auth/leaderboard');
   return response.data;
+}
+
+// Sends the token when logged in, so the backend can set claimedByMe
+export async function getPostById(postId) {
+  const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
+    headers: getAuthHeader()
+  });
+  return response.data;
+}
+
+// =========================================================================
+// CHAT APIs
+// =========================================================================
+
+export async function getMyConversations() {
+  const response = await apiClient.get(CONFIG.CONVERSATIONS_ENDPOINT, {
+    headers: getAuthHeader()
+  });
+  return response.data; // array of inbox items
+}
+
+// Returns { conversationId, status }. Throws 404 if you have no chat for this post.
+export async function getConversationByPost(postId) {
+  const response = await apiClient.get(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/by-post/${postId}`,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+// Returns { status, messages, hasMore }. Pass `before` (a message _id) for older pages.
+export async function getMessages(conversationId, { before, limit } = {}) {
+  const response = await apiClient.get(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/${conversationId}/messages`,
+    { headers: getAuthHeader(), params: { before, limit } }
+  );
+  return response.data;
+}
+
+// REST fallback, used when the socket is down
+export async function sendMessage(conversationId, text) {
+  const response = await apiClient.post(
+    `${CONFIG.CONVERSATIONS_ENDPOINT}/${conversationId}/messages`,
+    { text },
+    { headers: getAuthHeader() }
+  );
+  return response.data; // { message }
 }

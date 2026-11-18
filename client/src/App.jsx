@@ -6,20 +6,21 @@ import AuthLayout from './pages/AuthLayout.jsx'
 import Register from './pages/Register.jsx'
 import Login from './pages/Login.jsx'
 import Home from './pages/Home.jsx'
-import CreatePost from './pages/Createpost.jsx'
+import CreatePost from './pages/CreatePost.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
 import Profile from './pages/Profile.jsx'
+import PostDetails from './pages/PostDetails.jsx'
+import Messages from './pages/Messages.jsx'
 
 function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <Routes>
-        {/* Public Routes (share one persistent layout) */}
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-        </Route>
+        {/* Public Routes */}
+        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/posts/:id" element={<PostDetails />} />
 
         {/* Protected Student Route */}
         <Route
@@ -45,6 +46,16 @@ function App() {
           element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected Messages Route (optional :id keeps one component instance) */}
+        <Route
+          path="/messages/:id?"
+          element={
+            <ProtectedRoute>
+              <Messages />
             </ProtectedRoute>
           }
         />

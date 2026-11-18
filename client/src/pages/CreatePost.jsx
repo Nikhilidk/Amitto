@@ -1,62 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // Adjust path based on your folder structure
+import { useAuth } from '../context/AuthContext';
+import { createPost, getFriendlyErrorMessage } from '../api/apiService.js';
+import { CATEGORIES, CAMPUS_ZONES } from '../constants.js';
 
-const CAMPUS_ZONES = [
-  'unspecified',
-  'Library',
-  'Cafeteria',
-  'Science Block',
-  'Academic Block A',
-  'Academic Block B',
-  'Hostel Zone',
-  'Sports Complex',
-  'Auditorium',
-  'Main Gate / Parking',
-];
-
-const CATEGORIES = [
-  { value: 'other', label: 'Other / General' },
-  { value: 'electronics', label: 'Electronics (Phones, Laptops, Earphones)' },
-  { value: 'wallet_id', label: 'Wallets, Purses & IDs' },
-  { value: 'keys', label: 'Keys & Keychains' },
-  { value: 'documents', label: 'Documents & Notebooks' },
-  { value: 'clothing', label: 'Clothing & Accessories' },
-  { value: 'bags', label: 'Bags & Backpacks' },
-];
+// Mirror the backend limits for found posts
+const QUESTION_MIN = 5;
+const QUESTION_MAX = 200;
+const ANSWER_MAX = 100;
 
 export default function CreatePost() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  // Extract auth state
-  const { user, isVerified, token } = useAuth();
+  const { user, isVerified } = useAuth();
 
-  // Determine verification status (checks isVerified or falls back to user object)
   const userIsVerified = Boolean(
     isVerified ?? (user?.verificationStatus === 'approved')
   );
 
-  // Form states
   const initialType = searchParams.get('type') === 'found' ? 'found' : 'lost';
   const [type, setType] = useState(initialType);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('other');
   const [campusZone, setCampusZone] = useState('unspecified');
+  const [claimQuestion, setClaimQuestion] = useState('');
+  const [claimAnswer, setClaimAnswer] = useState('');
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
 
-  // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Handle Photo selection & Preview
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (e.g. 5MB max) and image type
       if (!file.type.startsWith('image/')) {
         setErrorMessage('Please select a valid image file (JPG, PNG, WebP).');
         return;
@@ -78,20 +58,17 @@ export default function CreatePost() {
     setPhotoPreview(null);
   };
 
-  // Clean up object URL memory on unmount
   useEffect(() => {
     return () => {
       if (photoPreview) URL.revokeObjectURL(photoPreview);
     };
   }, [photoPreview]);
 
-  // Handle Form Submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
 
-    // Safety verification check
     if (!userIsVerified) {
       setErrorMessage('Verification required. Your account must be approved before publishing a post.');
       return;
@@ -102,35 +79,34 @@ export default function CreatePost() {
       return;
     }
 
+    const question = claimQuestion.trim();
+    const answer = claimAnswer.trim();
+
+    if (type === 'found') {
+      if (question.length < QUESTION_MIN || question.length > QUESTION_MAX) {
+        setErrorMessage(`Verification question must be ${QUESTION_MIN}–${QUESTION_MAX} characters.`);
+        return;
+      }
+      if (!answer || answer.length > ANSWER_MAX) {
+        setErrorMessage(`Answer is required and must be at most ${ANSWER_MAX} characters.`);
+        return;
+      }
+    }
+
     try {
       setIsSubmitting(true);
 
-      // Create multipart FormData to match upload.single('photo') on the backend
-      const formData = new FormData();
-      formData.append('type', type);
-      formData.append('title', title.trim());
-      formData.append('description', description.trim());
-      formData.append('category', category);
-      formData.append('campusZone', campusZone);
-      formData.append('photo', photo); // Key matches backend: upload.single('photo')
-
-      // Retrieve auth token from context or fallback to localStorage
-      const authToken = token || localStorage.getItem('token');
-
-      const response = await fetch('/api/posts', {
-        method: 'POST',
-        headers: {
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-          // Note: DO NOT set Content-Type header manually when sending FormData
-        },
-        body: formData,
+      await createPost({
+        type,
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        campusZone,
+        // Only sent for found posts
+        claimQuestion: type === 'found' ? question : undefined,
+        claimAnswer: type === 'found' ? answer : undefined,
+        photoFile: photo,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create post');
-      }
 
       setSuccessMessage('Post created successfully! Redirecting...');
       setTimeout(() => {
@@ -138,7 +114,7 @@ export default function CreatePost() {
       }, 1500);
     } catch (err) {
       console.error('Submission error:', err);
-      setErrorMessage(err.message || 'Something went wrong while publishing.');
+      setErrorMessage(getFriendlyErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -147,8 +123,7 @@ export default function CreatePost() {
   return (
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        
-        {/* Back navigation */}
+
         <Link
           to="/"
           className="inline-flex items-center text-sm font-semibold text-slate-500 hover:text-slate-800 mb-6 transition"
@@ -157,8 +132,7 @@ export default function CreatePost() {
         </Link>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
-          
-          {/* Header */}
+
           <div className="mb-6 border-b border-slate-100 pb-5">
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">
               Create a Lost or Found Post
@@ -168,7 +142,6 @@ export default function CreatePost() {
             </p>
           </div>
 
-          {/* Unverified User Alert Banner */}
           {!userIsVerified && (
             <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-3">
               <span className="text-2xl">⚠️</span>
@@ -183,14 +156,12 @@ export default function CreatePost() {
             </div>
           )}
 
-          {/* Success Message */}
           {successMessage && (
             <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-semibold flex items-center gap-2">
               <span>✅</span> {successMessage}
             </div>
           )}
 
-          {/* Error Message */}
           {errorMessage && (
             <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-semibold flex items-center gap-2">
               <span>❌</span> {errorMessage}
@@ -198,8 +169,7 @@ export default function CreatePost() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            
-            {/* 1. Post Type Selector */}
+
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                 Post Type <span className="text-rose-500">*</span>
@@ -232,7 +202,6 @@ export default function CreatePost() {
               </div>
             </div>
 
-            {/* 2. Title / Subject */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                 Subject / Title <span className="text-rose-500">*</span>
@@ -247,9 +216,7 @@ export default function CreatePost() {
               />
             </div>
 
-            {/* 3. Category and Campus Zone (Grid) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Category */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Category
@@ -267,7 +234,6 @@ export default function CreatePost() {
                 </select>
               </div>
 
-              {/* Campus Zone */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                   Campus Zone / Location
@@ -286,7 +252,6 @@ export default function CreatePost() {
               </div>
             </div>
 
-            {/* 4. Description */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                 Detailed Description <span className="text-rose-500">*</span>
@@ -301,7 +266,52 @@ export default function CreatePost() {
               />
             </div>
 
-            {/* 5. Photo Upload with Preview */}
+            {/* Found posts only: verification question + answer */}
+            {type === 'found' && (
+              <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-200 space-y-4">
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Something only the real owner would know, like a brand, a color or a sticker.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                    Verification question <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. What sticker is on the back of the laptop?"
+                    value={claimQuestion}
+                    onChange={(e) => setClaimQuestion(e.target.value)}
+                    maxLength={QUESTION_MAX}
+                    minLength={QUESTION_MIN}
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1 text-right">
+                    {claimQuestion.trim().length}/{QUESTION_MAX} (min {QUESTION_MIN})
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                    Answer <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="The correct answer to your question"
+                    value={claimAnswer}
+                    onChange={(e) => setClaimAnswer(e.target.value)}
+                    maxLength={ANSWER_MAX}
+                    required
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1 text-right">
+                    {claimAnswer.trim().length}/{ANSWER_MAX}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
                 Item Photo <span className="text-rose-500">*</span>
@@ -343,7 +353,6 @@ export default function CreatePost() {
               )}
             </div>
 
-            {/* 6. Submit Button */}
             <div className="pt-4 border-t border-slate-100">
               <button
                 type="submit"
@@ -367,7 +376,7 @@ export default function CreatePost() {
                   'Publish Post'
                 )}
               </button>
-              
+
               {!userIsVerified && (
                 <p className="text-center text-xs text-slate-400 mt-2">
                   Once an admin approves your profile, this button will unlock automatically.
