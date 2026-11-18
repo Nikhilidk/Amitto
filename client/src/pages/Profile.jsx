@@ -10,7 +10,9 @@ import {
   getFriendlyErrorMessage
 } from '../api/apiService';
 import DeleteButton from '../components/DeleteButton.jsx';
+import ConfirmModal from '../components/ConfirmModal.jsx';
 import { useChat } from '../context/ChatContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Profile() {
   const [user, setUser] = useState(null);
@@ -21,9 +23,11 @@ export default function Profile() {
   const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [busyId, setBusyId] = useState(null); // post currently being updated
+  const [resolveTarget, setResolveTarget] = useState(null); // { post, message, successMessage }
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const { socket } = useChat();
+  const { updateUser } = useAuth();
 
   const fetchProfileAndPosts = async () => {
     setLoading(true);
@@ -34,6 +38,7 @@ export default function Profile() {
         getMyPosts()
       ]);
       setUser(userData);
+      updateUser({ photoUrl: userData.photoUrl }); // keep the navbar avatar in sync
       setPosts(userPostsData);
     } catch (err) {
       console.error("Profile loading error:", err);
@@ -124,6 +129,7 @@ export default function Profile() {
     try {
       const result = await updateProfilePhoto(file);
       setUser(result.user);
+      updateUser({ photoUrl: result.user.photoUrl }); // keep the navbar avatar in sync
       showAlert('Profile photo updated', 'success');
     } catch (err) {
       showAlert(err.response?.data?.error || 'Failed to update photo. Please try again.', 'error');
@@ -196,11 +202,12 @@ export default function Profile() {
           <>
             {reviewLink('💬 Review comments')}
             <button
-              onClick={() => {
-                if (window.confirm('Mark this post as resolved? Any open chats with finders will become read-only.')) {
-                  handleStatusChange(post._id, 'resolved');
-                }
-              }}
+              onClick={() =>
+                setResolveTarget({
+                  post,
+                  message: 'Any open chats with finders will become read-only.',
+                })
+              }
               disabled={busy}
               className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -229,7 +236,7 @@ export default function Profile() {
     if (post.status === 'active') {
       return (
         <button
-          onClick={() => handleStatusChange(post._id, 'resolved')}
+          onClick={() => setResolveTarget({ post, message: 'This will close the post.' })}
           disabled={busy}
           className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -249,7 +256,13 @@ export default function Profile() {
             💬 Message claimant
           </button>
           <button
-            onClick={() => handleStatusChange(post._id, 'resolved', 'Handover confirmed. Post resolved.')}
+            onClick={() =>
+              setResolveTarget({
+                post,
+                message: 'Confirm the item has been handed over?',
+                successMessage: 'Handover confirmed. Post resolved.',
+              })
+            }
             disabled={busy}
             className="text-xs font-medium bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -364,12 +377,8 @@ export default function Profile() {
               <p className="text-gray-500 text-sm mt-0.5">✉️ {user?.email}</p>
             </div>
 
-            {/* Trust score + member since */}
+            {/* Member since */}
             <div className="flex flex-col items-start sm:items-end gap-1 pt-2 sm:pt-0">
-              <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1.5 rounded-full">
-                <span>⭐</span>
-                <span>Trust Score: {user?.trustScore ?? 100} / 100</span>
-              </div>
               <span className="text-gray-400 text-xs">
                 📅 Member since {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '2026'}
               </span>
@@ -486,6 +495,27 @@ export default function Profile() {
             </div>
           ))}
         </div>
+      )}
+
+            {/* Resolve confirmation modal */}
+      {resolveTarget && (
+        <ConfirmModal
+          title="Mark as resolved?"
+          message={
+            <>
+              <strong className="text-gray-800">{resolveTarget.post.title}</strong>
+              <br />
+              {resolveTarget.message}
+            </>
+          }
+          confirmText="Yes, resolve"
+          onCancel={() => setResolveTarget(null)}
+          onConfirm={async () => {
+            const { post, successMessage } = resolveTarget;
+            setResolveTarget(null);
+            await handleStatusChange(post._id, 'resolved', successMessage);
+          }}
+        />
       )}
 
     </div>

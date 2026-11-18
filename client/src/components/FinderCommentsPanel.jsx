@@ -80,7 +80,7 @@ export default function FinderCommentsPanel({ comments, maxAccepted, postActive,
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{name}</p>
                     <p className="text-[11px] text-gray-400">
-                      {typeof author.trustScore === 'number' && <>⭐ {author.trustScore} · </>}
+                      {typeof author.trustScore === 'number' && <> {author.trustScore} · </>}
                       {c.createdAt ? new Date(c.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
                     </p>
                   </div>

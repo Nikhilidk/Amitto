@@ -27,6 +27,16 @@ export function AuthProvider({ children }) {
     storage.setItem('user', JSON.stringify(userData))
   }
 
+  // Merge new fields (e.g. photoUrl) into the current user and persist them
+  const updateUser = (partial) => {
+    setUser((prev) => {
+      const next = { ...(prev || {}), ...partial }
+      const storage = localStorage.getItem('token') ? localStorage : sessionStorage
+      storage.setItem('user', JSON.stringify(next))
+      return next
+    })
+  }
+
   const logout = () => {
     setUser(null)
     setToken(null)
@@ -40,7 +50,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.role === 'admin'
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading, isVerified, isAdmin }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser, loading, isVerified, isAdmin }}>
       {children}
     </AuthContext.Provider>
   )

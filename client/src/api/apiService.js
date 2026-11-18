@@ -242,7 +242,7 @@ export async function createComment(postId, text) {
 
 /**
  * GET /api/posts/:postId/comments — Returns { isOwner, maxAccepted, comments }.
- * Poster: everyone's comments (author name, photo, trust score). Finder: only their own.
+ * Poster: everyone's comments (author name, photo). Finder: only their own.
  */
 export async function getComments(postId) {
   const response = await apiClient.get(
@@ -353,12 +353,7 @@ export async function updateProfilePhoto(photoFile) {
   return response.data;
 }
 
-export async function getLeaderboard() {
-  const response = await apiClient.get('/auth/leaderboard');
-  return response.data;
-}
-
-// Sends the token when logged in, so the backend can set claimedByMe and myAttempts
+// Sends the token when logged in, so the backend can set claimedByMe
 export async function getPostById(postId) {
   const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
     headers: getAuthHeader()
