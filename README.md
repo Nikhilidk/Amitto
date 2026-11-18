@@ -5,43 +5,76 @@
 [![Express](https://img.shields.io/badge/Express-5-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com)
 
-A community-focused lost and found platform for reporting, discovering, claiming, and discussing misplaced items.
+**Amitto is a community lost-and-found platform.** It helps people report lost items, share details about items they have found, and contact one another to help return belongings to their owners. It is designed with university communities in mind, where students and staff often use the same buildings and shared spaces.
 
-**[View the live site](https://amitto.vercel.app)**
+With Amitto, a user can create a listing, add details such as the item’s location and date, and include an image. Other users can browse listings, leave comments, and use the platform’s claim and messaging features to discuss an item. Administrator tools support moderation of the community.
 
----
+**[Visit the live site](https://amitto.vercel.app)**
 
-## What Makes Amitto Different?
+## Table of Contents
 
-Most lost and found websites act as one-way notice boards: a person posts an item and the finder or owner must rely on informal, disconnected communication. Amitto combines discovery and recovery in one connected experience:
+- [Introduction](#introduction)
+- [What Makes Amitto Useful?](#what-makes-amitto-useful)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Technology](#technology)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Available Scripts](#available-scripts)
+- [API Overview](#api-overview)
+- [Deployment](#deployment)
+- [Limitations](#limitations)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+- [Authors](#authors)
+- [Live Demo](#live-demo)
 
-- **Structured lost and found posts** — Report whether an item was lost or found, with category, location, date, descriptions, and supporting images.
-- **Verification-focused claims** — Claim attempts and comments help verify ownership instead of exposing personal or item details immediately.
-- **Built-in conversations** — Users communicate through real-time private conversations rather than moving to external messaging apps.
-- **Community participation** — Comments and status updates keep the recovery process visible and collaborative.
-- **Moderation and administration** — Dedicated admin tools help keep listings and users trustworthy.
-- **Profile-based organization** — Each account has a clear place to manage posts and activity.
-- **Campus-ready design** — Amitto is built around university communities, where shared spaces and faster coordination make a focused platform especially useful.
+## Introduction
 
-Amitto is not just a searchable listing page. It is designed as a complete recovery workflow—from reporting and discovery to communication and claim verification.
+### The problem
 
----
+When someone loses an item, they may not know where to report it or how to reach the person who found it. Information can end up spread across group chats, social media, and physical notice boards. This makes it difficult to find relevant posts and follow up safely.
+
+### The solution
+
+Amitto brings lost-and-found listings and related conversations together in one web application. Users can describe an item, browse listings, and communicate with other users through the platform. The aim is to make it easier for a community to share useful information and help return items.
+
+Amitto is a university project and is best understood as a community tool—not as a guarantee that an item will be found or returned.
+
+## What Makes Amitto Useful?
+
+- **Clear listings:** Posts can include whether an item was lost or found, a description, category, location, date, and image.
+- **A connected recovery process:** Users can browse posts, discuss them, and use claim-related features in the same application.
+- **Communication in one place:** Comments and private conversations help users follow up without relying only on outside messaging apps.
+- **Community moderation:** Administrator tools are available to help manage listings and users.
+- **Designed for shared spaces:** A campus community can use the platform to share reports about places such as classrooms, libraries, and common areas.
 
 ## Features
 
-- 🔐 JWT-based registration and login
-- 📝 Create and manage lost or found posts
-- 🖼️ Image uploads through Cloudinary
-- 🔎 Browse and search community listings
-- 📍 Location, date, category, and description-based post details
-- 💬 Post comments and real-time private messaging
-- 🤝 Claim attempt and ownership verification workflow
-- 👤 User profiles and post activity
-- 🛡️ Protected student and administrator routes
-- 📊 Admin dashboard for community moderation
-- ⚡ Socket.IO-powered live communication
+- Create an account and sign in using JWT-based authentication.
+- Create and manage posts for lost and found items.
+- Add item details such as a description, category, location, date, and image.
+- Upload images using Cloudinary.
+- Browse and search community listings.
+- Comment on listings and discuss item details.
+- Use claim-related features to start an ownership discussion.
+- Send private messages using Socket.IO-powered communication.
+- View user profiles and post activity.
+- Protect student and administrator routes.
+- Use the administrator dashboard for community moderation.
 
-## Tech Stack
+## How It Works
+
+1. **Create an account or sign in.** Users need an account to access protected parts of the application.
+2. **Create a listing.** Choose whether the item was lost or found, then add the details that may help someone recognize it.
+3. **Browse listings.** Look through community posts and search for information that matches the item.
+4. **Discuss a possible match.** Use comments, claim-related features, or private messaging to ask questions and share information.
+5. **Follow up carefully.** Confirm ownership with details that are not already visible in the listing before arranging the return.
+
+Amitto provides tools for communication and claims, but users are responsible for making safe decisions when meeting or sharing information.
+
+## Technology
 
 ### Frontend
 
@@ -56,12 +89,10 @@ Amitto is not just a searchable listing page. It is designed as a complete recov
 
 - Node.js
 - Express 5
-- MongoDB
-- Mongoose
-- JSON Web Tokens
+- MongoDB and Mongoose
+- JSON Web Tokens (JWT)
 - bcrypt
-- Cloudinary
-- Multer
+- Cloudinary and Multer
 - Socket.IO
 
 ## Project Structure
@@ -87,22 +118,26 @@ Amitto/
 
 ## Getting Started
 
+Follow these steps to run Amitto on your computer. You will need to set up the frontend and backend in separate terminals.
+
 ### Prerequisites
 
-- Node.js 18 or newer
-- npm
-- MongoDB database
-- Cloudinary account
-- Git
+Install or prepare the following before you begin:
 
-### 1. Clone the Repository
+- Node.js 18 or newer
+- npm (included with Node.js)
+- Git
+- A MongoDB database
+- A Cloudinary account for image uploads
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Nikhilidk/Amitto.git
 cd Amitto
 ```
 
-### 2. Configure the Backend
+### 2. Install and configure the backend
 
 ```bash
 cd server
@@ -110,7 +145,7 @@ npm install
 cp .env.example .env
 ```
 
-Update `server/.env` with your own values:
+Open `server/.env` and replace the example values with your own configuration:
 
 ```env
 PORT=5000
@@ -122,17 +157,19 @@ JWT_SECRET=your_jwt_secret_here
 CLIENT_ORIGIN=http://localhost:5173
 ```
 
-Start the API:
+Use the database connection string and Cloudinary credentials from your own accounts. Keep these values private and do not commit your `.env` file.
+
+Start the backend from the `server` directory:
 
 ```bash
 node index.js
 ```
 
-The backend runs on `http://localhost:5000` by default.
+By default, the backend is available at `http://localhost:5000`.
 
-### 3. Configure the Frontend
+### 3. Install and run the frontend
 
-Open a second terminal:
+Open a second terminal at the repository root, then run:
 
 ```bash
 cd client
@@ -140,91 +177,108 @@ npm install
 npm run dev
 ```
 
-The frontend runs on `http://localhost:5173` by default.
+By default, the frontend is available at `http://localhost:5173`. Keep both the frontend and backend running while using the local application.
 
 ## Available Scripts
 
-### Frontend
+Run frontend commands from the `client` directory:
 
 | Command | Description |
 |---|---|
-| `npm run dev` | Start the Vite development server |
-| `npm run build` | Create a production build |
-| `npm run preview` | Preview the production build locally |
-| `npm run lint` | Run ESLint |
+| `npm run dev` | Start the frontend development server. |
+| `npm run build` | Create a production build of the frontend. |
+| `npm run preview` | Preview the production build locally. |
+| `npm run lint` | Check frontend code with ESLint. |
 
-### Backend
+Run the backend command from the `server` directory:
 
 | Command | Description |
 |---|---|
-| `node index.js` | Start the Express and Socket.IO server |
+| `node index.js` | Start the Express API and Socket.IO server. |
 
 ## API Overview
 
-The backend exposes grouped REST routes:
+The backend groups its REST API routes by purpose:
 
 | Route group | Purpose |
 |---|---|
-| `/api/auth` | Registration, login, and authentication |
-| `/api/posts` | Lost and found posts and claim-related operations |
-| `/api/comments` | Post comments |
-| `/api/conversations` | Direct user conversations |
-| `/api/admin` | Administrative moderation |
-| `/api/test` | Server health check |
+| `/api/auth` | User registration, login, and authentication. |
+| `/api/posts` | Lost-and-found posts and claim-related operations. |
+| `/api/comments` | Comments on posts. |
+| `/api/conversations` | Direct conversations between users. |
+| `/api/admin` | Administrative moderation tools. |
+| `/api/test` | Server health check. |
 
-API routes may require a valid JSON Web Token. Keep secrets out of version control and use environment variables in every deployed environment.
+Some API routes require a valid JSON Web Token. The required access depends on the route and the user’s role.
 
 ## Deployment
 
-- The React frontend is compatible with Vercel and can be deployed from the `client` directory.
-- The Express server can be deployed to a Node-compatible platform.
-- Configure MongoDB, Cloudinary, CORS, and JWT environment variables on the hosting provider.
-- Set the frontend API endpoint and `CLIENT_ORIGIN` to match the deployed domains.
+- The React frontend can be deployed to Vercel from the `client` directory.
+- The Express backend needs a hosting service that supports Node.js.
+- Configure the MongoDB connection, Cloudinary credentials, JWT secret, and allowed frontend origin in the hosting provider’s environment settings.
+- Make sure the frontend is configured to contact the deployed backend, and that the backend allows requests from the deployed frontend domain.
+- Never put private credentials in frontend code or commit them to the repository.
+
+## Limitations
+
+Amitto can help a community share information, but it has limits that users should understand:
+
+- **A listing does not guarantee recovery.** An item may not be found, reported, or returned.
+- **Claims need human judgment.** The platform’s claim and messaging features support discussion; they do not prove that a person owns an item.
+- **Users must protect private information.** Do not include passwords, full addresses, financial details, or other sensitive information in a post or message.
+- **Meet safely.** Arrange returns in a public place and involve campus staff or another trusted person when appropriate. Do not meet someone if you feel unsafe.
+- **Service availability depends on external services.** The application uses MongoDB, Cloudinary, and hosting providers. Problems or outages with those services can affect the site or image uploads.
+- **The project is focused on a community use case.** Its features and setup are intended for a university-style community and may not meet the needs of a large public service without further work.
+- **Production readiness needs review.** Before using Amitto for a larger or sensitive deployment, review its security, privacy, accessibility, backup, and moderation processes.
+- **Mobile support may vary.** Amitto is a web application; this repository does not describe a separate native mobile application.
 
 ## Roadmap
 
-- Advanced search and filtering
-- Item category recommendations
-- Expanded location and campus-zone filtering
-- Claim verification improvements
-- Notifications and reporting tools
-- Automated moderation support
-- Mobile application
+Possible future improvements include:
+
+- More advanced search and filtering.
+- Recommendations based on item categories.
+- More detailed campus and location filters.
+- Improvements to claim verification.
+- Notifications and reporting tools.
+- More automated moderation support.
+- A mobile application.
 
 ## Contributing
 
-Contributions are welcome.
+Contributions are welcome. To suggest a change:
 
 1. Fork the repository.
-2. Create a feature branch:
+2. Create a branch for your work:
 
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
-3. Make your changes and test both the frontend and backend.
-4. Commit your work:
+3. Make your changes and test the frontend and backend.
+4. Commit your changes:
 
    ```bash
    git commit -m "Add your feature"
    ```
 
-5. Push the branch and open a pull request.
+5. Push your branch and open a pull request with a clear explanation of the change.
 
 ## Security
 
-Do not publish MongoDB credentials, JWT secrets, Cloudinary secrets, or personal item details. The project uses JWT authentication and role-protected routes, but it should receive an additional security review before production use.
+Do not publish MongoDB credentials, JWT secrets, Cloudinary secrets, or sensitive personal information about an item or its owner. Store secrets in environment variables. Amitto includes JWT authentication and role-protected routes, but those features do not replace a full security review before production use.
 
 ## License
 
-No license has been specified for this project. All rights are retained by the repository owner unless a license is explicitly added.
+No license has been specified for this project. Unless a license is added, all rights are retained by the repository owner.
 
-## Author
+## Authors
 
 Developed by:
-1. [Nikhil Negi](https://github.com/Nikhilidk).
-2. [Ausaaf Siddiqui](https://github.com/ausaafffff).
-3. [Sanyam Baranwal](https://github.com/sanyam-2006)
+
+- [Nikhil Negi](https://github.com/Nikhilidk)
+- [Ausaaf Siddiqui](https://github.com/ausaafffff)
+- [Sanyam Baranwal](https://github.com/sanyam-2006)
 
 ## Live Demo
 
