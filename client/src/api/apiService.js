@@ -186,7 +186,7 @@ export async function createComment(postId, text) {
 
 /**
  * GET /api/posts/:postId/comments — Returns { isOwner, maxAccepted, comments }.
- * Poster: everyone's comments (author name, photo, trust score). Finder: only their own.
+ * Poster: everyone's comments (author name, photo). Finder: only their own.
  */
 export async function getComments(postId) {
   const response = await apiClient.get(
@@ -294,11 +294,6 @@ export async function updateProfilePhoto(photoFile) {
     formData,
     { headers: getAuthHeader() }
   );
-  return response.data;
-}
-
-export async function getLeaderboard() {
-  const response = await apiClient.get('/auth/leaderboard');
   return response.data;
 }
 

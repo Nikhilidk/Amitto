@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getPosts, getMyPosts, getLeaderboard, getFriendlyErrorMessage } from '../api/apiService.js'
+import { getPosts, getMyPosts, getFriendlyErrorMessage } from '../api/apiService.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import PostCard from '../components/PostCard.jsx'
-import { CATEGORIES, CAMPUS_ZONES } from '../constants.js' // NEW
+import { CATEGORIES, CAMPUS_ZONES } from '../constants.js'
 
 function Home() {
   const { user, isVerified } = useAuth()
@@ -12,16 +12,15 @@ function Home() {
   const [error, setError] = useState('')
   const [filterType, setFilterType] = useState('all')
 
-  // NEW: filter state
+  // Filter state
   const [category, setCategory] = useState('')
   const [campusZone, setCampusZone] = useState('')
   const [searchText, setSearchText] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  const [leaderboard, setLeaderboard] = useState([])
   const [myPosts, setMyPosts] = useState([])
 
-  // NEW: debounce the search box (350ms)
+  // Debounce the search box (350ms)
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchText), 350)
     return () => clearTimeout(timer)
@@ -34,7 +33,7 @@ function Home() {
       try {
         setLoading(true)
         setError('')
-        // CHANGED: server-side filters ('all' / empty values are sent as undefined)
+        // Server-side filters ('all' / empty values are sent as undefined)
         const data = await getPosts({
           type: filterType === 'all' ? undefined : filterType,
           category: category || undefined,
@@ -49,15 +48,6 @@ function Home() {
       }
     }
 
-    async function fetchLeaderboard() {
-      try {
-        const data = await getLeaderboard()
-        if (isMounted) setLeaderboard(data)
-      } catch (err) {
-        // fail silently — sidebar is non-critical
-      }
-    }
-
     async function fetchMyPosts() {
       if (!user) return
       try {
@@ -69,10 +59,9 @@ function Home() {
     }
 
     fetchPosts()
-    fetchLeaderboard()
     fetchMyPosts()
     return () => { isMounted = false }
-  }, [user, filterType, category, campusZone, debouncedSearch]) // CHANGED
+  }, [user, filterType, category, campusZone, debouncedSearch])
 
   const filteredPosts = filterType === 'all'
     ? posts
@@ -84,7 +73,6 @@ function Home() {
     resolved: 'bg-gray-200 text-gray-600'
   }
 
-  // NEW: helpers
   const hasActiveFilters =
     filterType !== 'all' || category !== '' || campusZone !== '' || searchText.trim() !== ''
 
@@ -101,45 +89,14 @@ function Home() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_260px] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6">
 
-        {/* LEFT SIDEBAR — Trust Score Leaderboard */}
-        <aside className="order-2 lg:order-1">
-          <div className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm p-5 sticky top-20">
-            <h3 className="text-sm font-bold text-[#2D2A32] uppercase tracking-wide mb-4 flex items-center gap-2">
-              🏆 Top Contributors
-            </h3>
-            {leaderboard.length === 0 ? (
-              <p className="text-xs text-[#2D2A32]/50">No data yet.</p>
-            ) : (
-              <ul className="space-y-3">
-                {leaderboard.map((u, i) => (
-                  <li key={u._id} className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-[#2D2A32]/40 w-4">{i + 1}</span>
-                    {u.photoUrl ? (
-                      <img src={u.photoUrl} alt={u.name} className="w-8 h-8 rounded-full object-cover" />
-                    ) : (
-                      <span className="w-8 h-8 rounded-full bg-[#D2A066]/30 flex items-center justify-center text-xs font-bold text-[#2D2A32]">
-                        {u.name?.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-[#2D2A32] truncate">{u.name}</p>
-                      <p className="text-[10px] text-[#2D2A32]/50">⭐ {u.trustScore} pts</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
-
-        {/* CENTER — Main Feed */}
-        <main className="order-1 lg:order-2">
+        {/* LEFT — Main Feed */}
+        <main className="order-1">
           <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-[#2D2A32]">Lost & Found Feed</h2>
+            <h2 className="text-3xl font-black tracking-tight text-[#2D2A32]">AMITTO</h2>
             <p className="text-[#2D2A32]/60 text-sm mt-1">
-              Browse items reported lost or found around campus.
+              A community-based lost and found website to help and support students, faculty and staff helpers.
             </p>
           </div>
 
@@ -155,7 +112,7 @@ function Home() {
             </Link>
           )}
 
-          {/* NEW: Search box */}
+          {/* Search box */}
           <input
             type="text"
             value={searchText}
@@ -164,7 +121,7 @@ function Home() {
             className="w-full px-4 py-2.5 mb-4 rounded-lg text-sm bg-white text-[#2D2A32] border border-[#2D2A32]/10 focus:outline-none focus:ring-2 focus:ring-[#D2A066]/50"
           />
 
-          {/* NEW: Category + Campus zone dropdowns */}
+          {/* Category + Campus zone dropdowns */}
           <div className="flex flex-wrap gap-3 mb-4">
             <select
               value={category}
@@ -215,12 +172,10 @@ function Home() {
             <p className="text-red-600 text-sm text-center py-8">{error}</p>
           )}
 
-          {/* CHANGED: added !hasActiveFilters */}
           {!loading && !error && filteredPosts.length === 0 && !hasActiveFilters && (
             <p className="text-[#2D2A32]/50 text-sm text-center py-12">No posts to show yet.</p>
           )}
 
-          {/* NEW: empty result with active filters */}
           {!loading && !error && filteredPosts.length === 0 && hasActiveFilters && (
             <div className="text-center py-12">
               <p className="text-[#2D2A32]/60 text-sm mb-3">No posts match your filters.</p>
@@ -247,7 +202,7 @@ function Home() {
         </main>
 
         {/* RIGHT SIDEBAR — Your Recent Post Status */}
-        <aside className="order-3">
+        <aside className="order-2">
           <div className="bg-white rounded-2xl border border-[#2D2A32]/10 shadow-sm p-5 sticky top-20">
             <h3 className="text-sm font-bold text-[#2D2A32] uppercase tracking-wide mb-4 flex items-center gap-2">
               📋 Your Recent Updates
