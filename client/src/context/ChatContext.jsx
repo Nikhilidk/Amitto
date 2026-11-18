@@ -9,7 +9,10 @@ const ChatContext = createContext({
   hasUnread: false,
   isUnread: () => false,
   setActiveConversation: () => {},
-  clearUnread: () => {}
+  clearUnread: () => {},
+  isPostUnread: () => false,
+  setActivePost: () => {},
+  clearPostUnread: () => {}
 })
 
 // Owns the socket lifecycle: connects when a token exists, disconnects on logout,
@@ -20,8 +23,11 @@ export function ChatProvider({ children }) {
   const [connected, setConnected] = useState(false)
   const [connectError, setConnectError] = useState('')
   const [unread, setUnread] = useState(() => new Set())
+  // post ids with a new / updated finder comment (shares the same unread dot)
+  const [commentUnread, setCommentUnread] = useState(() => new Set())
 
   const activeRef = useRef(null) // conversation currently open on screen
+  const activePostRef = useRef(null) // post page currently open
   const userIdRef = useRef(null)
   const logoutRef = useRef(logout)
   useEffect(() => { userIdRef.current = user?.id }, [user])
@@ -34,6 +40,7 @@ export function ChatProvider({ children }) {
       setConnected(false)
       setConnectError('')
       setUnread(new Set())
+      setCommentUnread(new Set())
       return
     }
 
@@ -71,11 +78,23 @@ export function ChatProvider({ children }) {
       })
     }
 
+    // comment:new (poster) and comment:updated (finder). Assumes payload { postId }.
+    // Payload is read as postId, post, or comment.post, since the server's shape may vary.
+    const onCommentEvent = (payload = {}) => {
+      const postId = payload.postId ?? payload.post ?? payload.comment?.post
+      if (!postId) return
+      const key = String(postId)
+      if (key === activePostRef.current) return
+      setCommentUnread((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
+    }
+
     s.on('connect', onConnect)
     s.on('disconnect', onDisconnect)
     s.on('connect_error', onConnectError)
     s.on('inbox:update', onInboxUpdate)
     s.on('conversation:removed', onRemoved)
+    s.on('comment:new', onCommentEvent)
+    s.on('comment:updated', onCommentEvent)
 
     return () => {
       disconnectSocket()
@@ -95,15 +114,30 @@ export function ChatProvider({ children }) {
     })
   }, [])
 
+  const setActivePost = useCallback((id) => { activePostRef.current = id ? String(id) : null }, [])
+
+  const clearPostUnread = useCallback((id) => {
+    const key = id ? String(id) : null
+    setCommentUnread((prev) => {
+      if (!key || !prev.has(key)) return prev
+      const next = new Set(prev)
+      next.delete(key)
+      return next
+    })
+  }, [])
+
   const value = useMemo(() => ({
     socket,
     connected,
     connectError,
-    hasUnread: unread.size > 0,
+    hasUnread: unread.size > 0 || commentUnread.size > 0,
     isUnread: (id) => unread.has(id),
     setActiveConversation,
-    clearUnread
-  }), [socket, connected, connectError, unread, setActiveConversation, clearUnread])
+    clearUnread,
+    isPostUnread: (id) => commentUnread.has(String(id)),
+    setActivePost,
+    clearPostUnread
+  }), [socket, connected, connectError, unread, commentUnread, setActiveConversation, clearUnread, setActivePost, clearPostUnread])
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>
 }
