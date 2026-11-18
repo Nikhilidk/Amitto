@@ -18,6 +18,9 @@ const { verifyToken, optionalAuth } = require('../middleware/auth');
 
 const MAX_CLAIM_ATTEMPTS = 3;
 
+// A chat request counts as "not yet sent" if the field is missing (old records) or 'none'
+const REQUEST_ALREADY_USED = ['pending', 'accepted', 'declined', 'blocked'];
+
 const router = express.Router();
 
 const storage = multer.memoryStorage();
@@ -212,6 +215,17 @@ router.get('/:id', optionalAuth, async (req, res) => {
     );
     delete result.claimedBy;
 
+    // NEW: attempt counter + chat-request status for a logged-in user who isn't the owner
+    result.myAttempts = null;
+    if (req.user && post.type === 'found' && post.postedBy._id.toString() !== req.user.userId) {
+      const attempt = await ClaimAttempt.findOne({ post: post._id, user: req.user.userId });
+      result.myAttempts = {
+        used: attempt ? Math.min(attempt.count, MAX_CLAIM_ATTEMPTS) : 0,
+        max: MAX_CLAIM_ATTEMPTS,
+        requestStatus: attempt ? attempt.requestStatus : 'none',
+      };
+    }
+
     res.status(200).json(result);
   } catch (err) {
     console.error(err);
@@ -261,14 +275,22 @@ router.post('/:id/claim', verifyToken, async (req, res) => {
       { upsert: true, returnDocument: 'after' }
     );
     if (attempt.count > MAX_CLAIM_ATTEMPTS) {
-      return res.status(429).json({ error: 'No attempts left for this item', attemptsLeft: 0 });
+      return res.status(429).json({
+        error: 'No attempts left for this item',
+        attemptsLeft: 0,
+        requestStatus: attempt.requestStatus,
+      });
     }
 
     const correct = await checkAnswer(answer, post.claimAnswerHash);
     if (!correct) {
+      // NEW: keep what they tried, so the poster can judge a near miss if they ask to chat
+      await ClaimAttempt.updateOne({ _id: attempt._id }, { $push: { answers: answer.trim() } });
+      const attemptsLeft = MAX_CLAIM_ATTEMPTS - attempt.count;
       return res.status(403).json({
         error: 'Incorrect answer',
-        attemptsLeft: MAX_CLAIM_ATTEMPTS - attempt.count,
+        attemptsLeft,
+        canRequestChat: attemptsLeft === 0,
       });
     }
 
@@ -334,11 +356,11 @@ router.post('/:id/claim/release', verifyToken, async (req, res) => {
     const removed = await deleteConversationForPost(post._id);
     notifyConversationRemoved(req.app.get('io'), removed);
 
-    // The rejected claimant can't simply try again
+    // The rejected claimant can't simply try again, or ask to chat ('blocked')
     if (rejectedUserId) {
       await ClaimAttempt.findOneAndUpdate(
         { post: post._id, user: rejectedUserId },
-        { $set: { count: MAX_CLAIM_ATTEMPTS } },
+        { $set: { count: MAX_CLAIM_ATTEMPTS, requestStatus: 'blocked' } },
         { upsert: true }
       );
     }
@@ -347,6 +369,168 @@ router.post('/:id/claim/release', verifyToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error rejecting claim' });
+  }
+});
+
+// NEW: POST /api/posts/:id/chat-request — after 3 wrong answers, ask the finder to chat anyway
+router.post('/:id/chat-request', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid post ID' });
+    }
+
+    const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+    if (note.length > 200) {
+      return res.status(400).json({ error: 'Note must be at most 200 characters' });
+    }
+
+    const currentUser = await User.findById(req.user.userId);
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (currentUser.verificationStatus !== 'approved') {
+      return res.status(403).json({ error: 'Account verification required' });
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+    if (post.type !== 'found') {
+      return res.status(400).json({ error: 'Chat requests are only for found items' });
+    }
+    if (post.postedBy.toString() === req.user.userId) {
+      return res.status(403).json({ error: 'You cannot request a chat on your own post' });
+    }
+    if (post.status !== 'active') {
+      return res.status(409).json({ error: 'This item is no longer available' });
+    }
+
+    const attempt = await ClaimAttempt.findOne({ post: post._id, user: req.user.userId });
+    if (!attempt || attempt.count < MAX_CLAIM_ATTEMPTS) {
+      return res.status(403).json({ error: 'Use all your attempts before asking for a chat' });
+    }
+
+    // Atomic, so a double click can't send two requests
+    const updated = await ClaimAttempt.findOneAndUpdate(
+      { _id: attempt._id, requestStatus: { $nin: REQUEST_ALREADY_USED } },
+      { requestStatus: 'pending', requestNote: note },
+      { returnDocument: 'after' }
+    );
+    if (!updated) {
+      return res.status(409).json({ error: "You can't send a chat request for this item" });
+    }
+
+    res.status(201).json({ requestStatus: 'pending' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error sending chat request' });
+  }
+});
+
+// NEW: GET /api/posts/:id/chat-requests — owner only: who asked, and what they tried
+router.get('/:id/chat-requests', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const post = await Post.findById(req.params.id).select('postedBy status');
+    if (!post || post.postedBy.toString() !== req.user.userId) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const requests = await ClaimAttempt.find({
+      post: post._id,
+      requestStatus: { $in: ['pending', 'accepted', 'declined'] },
+    })
+      .sort({ updatedAt: -1 })
+      .populate('user', 'name photoUrl trustScore')
+      .select('user answers requestStatus requestNote updatedAt')
+      .lean();
+
+    res.status(200).json({ postStatus: post.status, requests });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching chat requests' });
+  }
+});
+
+// NEW: POST /api/posts/:id/chat-requests/:userId/accept — that user becomes the claimant
+router.post('/:id/chat-requests/:userId/accept', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    const post = await Post.findById(req.params.id);
+    if (!post || post.postedBy.toString() !== req.user.userId) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+    if (post.status !== 'active') {
+      return res.status(409).json({ error: 'This item already has a pending claim or is resolved' });
+    }
+
+    // pending -> accepted, atomically
+    const request = await ClaimAttempt.findOneAndUpdate(
+      { post: post._id, user: req.params.userId, requestStatus: 'pending' },
+      { requestStatus: 'accepted' },
+      { returnDocument: 'after' }
+    );
+    if (!request) {
+      return res.status(409).json({ error: 'This request was already handled' });
+    }
+
+    // Same as a correct answer: only one claimant can win
+    const updated = await Post.findOneAndUpdate(
+      { _id: post._id, status: 'active' },
+      { status: 'claim_pending', claimedBy: req.params.userId },
+      { returnDocument: 'after' }
+    );
+    if (!updated) {
+      await ClaimAttempt.updateOne({ _id: request._id }, { requestStatus: 'pending' });
+      return res.status(409).json({ error: 'This item already has a pending claim' });
+    }
+
+    const conversation = await Conversation.findOneAndUpdate(
+      { post: post._id, claimant: req.params.userId },
+      { $set: { owner: post.postedBy, status: 'open' } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    notifyConversationCreated(req.app.get('io'), conversation);
+
+    res.status(200).json({ message: 'Request accepted', conversationId: conversation._id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error accepting request' });
+  }
+});
+
+// NEW: POST /api/posts/:id/chat-requests/:userId/decline — owner declines
+router.post('/:id/chat-requests/:userId/decline', verifyToken, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    const post = await Post.findById(req.params.id).select('postedBy');
+    if (!post || post.postedBy.toString() !== req.user.userId) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+
+    const declined = await ClaimAttempt.findOneAndUpdate(
+      { post: post._id, user: req.params.userId, requestStatus: 'pending' },
+      { requestStatus: 'declined' },
+      { returnDocument: 'after' }
+    );
+    if (!declined) {
+      return res.status(409).json({ error: 'This request was already handled' });
+    }
+
+    res.status(200).json({ requestStatus: 'declined' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error declining request' });
   }
 });
 
