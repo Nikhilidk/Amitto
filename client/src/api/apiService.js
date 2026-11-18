@@ -167,6 +167,62 @@ export async function releaseClaim(postId) {
 }
 
 // =========================================================================
+// FOUND-POST CHAT REQUEST APIs (after 3 wrong answers)
+// =========================================================================
+
+/**
+ * POST /api/posts/:id/chat-request — Ask the finder to chat after using all attempts.
+ * Returns { requestStatus: 'pending' }.
+ * Errors: 403 (attempts not used up), 409 (already sent / item no longer available).
+ */
+export async function sendChatRequest(postId, note = '') {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/chat-request`,
+    { note },
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * GET /api/posts/:id/chat-requests — Poster only. Returns { postStatus, requests }.
+ * Each request: { _id, user: { _id, name, photoUrl, trustScore }, answers, requestNote, requestStatus, updatedAt }
+ */
+export async function getChatRequests(postId) {
+  const response = await apiClient.get(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/chat-requests`,
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/posts/:id/chat-requests/:userId/accept — Poster accepts: that user becomes the claimant.
+ * Returns { message, conversationId }.
+ * Errors: 409 (item already has a pending claim / request already handled).
+ */
+export async function acceptChatRequest(postId, userId) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/chat-requests/${userId}/accept`,
+    {},
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+/**
+ * POST /api/posts/:id/chat-requests/:userId/decline — Poster declines the request.
+ */
+export async function declineChatRequest(postId, userId) {
+  const response = await apiClient.post(
+    `${CONFIG.POSTS_ENDPOINT}/${postId}/chat-requests/${userId}/decline`,
+    {},
+    { headers: getAuthHeader() }
+  );
+  return response.data;
+}
+
+// =========================================================================
 // LOST-POST COMMENT APIs
 // =========================================================================
 
@@ -302,7 +358,7 @@ export async function getLeaderboard() {
   return response.data;
 }
 
-// Sends the token when logged in, so the backend can set claimedByMe
+// Sends the token when logged in, so the backend can set claimedByMe and myAttempts
 export async function getPostById(postId) {
   const response = await apiClient.get(`${CONFIG.POSTS_ENDPOINT}/${postId}`, {
     headers: getAuthHeader()
