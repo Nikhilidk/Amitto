@@ -16,18 +16,25 @@ import {
   getFriendlyErrorMessage,
   getConversationByPost,
   getComments,
+  sendChatRequest,
+  getChatRequests,
+  acceptChatRequest,
+  declineChatRequest,
 } from '../api/apiService.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useChat } from '../context/ChatContext.jsx';
 import DeleteButton from '../components/DeleteButton.jsx';
 import FinderCommentBox from '../components/FinderCommentBox.jsx';
 import FinderCommentsPanel from '../components/FinderCommentsPanel.jsx';
+import ChatRequestsPanel from '../components/ChatRequestsPanel.jsx';
 
 const statusStyles = {
   active: 'bg-blue-100 text-blue-700',
   claim_pending: 'bg-yellow-100 text-yellow-700',
   resolved: 'bg-gray-200 text-gray-600',
 };
+
+const REQUEST_NOTE_MAX = 200;
 
 function PostDetail() {
   const { id } = useParams();
@@ -50,6 +57,17 @@ function PostDetail() {
 
   const [commentData, setCommentData] = useState(null);
   const [commentsError, setCommentsError] = useState('');
+
+  // Chat request (claimant side, after 3 wrong answers)
+  const [requestNote, setRequestNote] = useState('');
+  const [requestSending, setRequestSending] = useState(false);
+  const [requestFeedback, setRequestFeedback] = useState(null);
+
+  // Chat requests (poster side)
+  const [requestData, setRequestData] = useState(null);
+  const [requestsError, setRequestsError] = useState('');
+  const [requestBusy, setRequestBusy] = useState(null); // userId being accepted / declined
+  const [requestActionError, setRequestActionError] = useState('');
 
   const loadPost = useCallback(async ({ silent = false } = {}) => {
     try {
@@ -74,6 +92,11 @@ function PostDetail() {
     setConversationId(null);
     setCommentData(null);
     setCommentsError('');
+    setRequestNote('');
+    setRequestFeedback(null);
+    setRequestData(null);
+    setRequestsError('');
+    setRequestActionError('');
     loadPost();
   }, [loadPost]);
 
@@ -115,6 +138,9 @@ function PostDetail() {
     post?.postedBy && typeof post?.postedBy === 'object'
       ? post?.postedBy._id
       : post?.postedBy;
+  const isFoundPost = post?.type === 'found';
+  const isPostOwner =
+    Boolean(user) && Boolean(postOwnerId) && String(user.id || user._id) === String(postOwnerId);
 
   const loadComments = useCallback(async () => {
     // Load comments for any authenticated user; UI decides what to show.
@@ -131,6 +157,22 @@ function PostDetail() {
   useEffect(() => {
     loadComments();
   }, [loadComments]);
+
+  // Poster of a found post: load the chat requests (reloaded when the post status changes)
+  const loadChatRequests = useCallback(async () => {
+    if (!isFoundPost || !isPostOwner) return;
+    try {
+      const data = await getChatRequests(id);
+      setRequestData(data);
+      setRequestsError('');
+    } catch (err) {
+      setRequestsError(getFriendlyErrorMessage(err));
+    }
+  }, [id, isFoundPost, isPostOwner]);
+
+  useEffect(() => {
+    loadChatRequests();
+  }, [loadChatRequests, post?.status]);
 
   // Mark post as read in the inbox UI
   useEffect(() => {
@@ -153,6 +195,18 @@ function PostDetail() {
       socket.off('comment:updated', onCommentEvent);
     };
   }, [socket, id, loadComments]);
+
+  // A chat opened on this post (for example the poster accepted my request): refresh it live
+  useEffect(() => {
+    if (!socket) return;
+    const onConversationCreated = (payload) => {
+      if (String(payload?.postId) === String(id)) loadPost({ silent: true });
+    };
+    socket.on('conversation:created', onConversationCreated);
+    return () => {
+      socket.off('conversation:created', onConversationCreated);
+    };
+  }, [socket, id, loadPost]);
 
   const patchComment = (commentId, patch) => {
     setCommentData((prev) =>
@@ -184,6 +238,16 @@ function PostDetail() {
     );
   };
 
+  // Keeps the attempts counter / request status in sync without refetching the post
+  const updateMyAttempts = (patch) => {
+    setPost((prev) =>
+      prev && {
+        ...prev,
+        myAttempts: { used: 0, max: 3, requestStatus: 'none', ...(prev.myAttempts || {}), ...patch },
+      }
+    );
+  };
+
   const handleClaim = async (e) => {
     e.preventDefault();
     const trimmed = answer.trim();
@@ -194,19 +258,26 @@ function PostDetail() {
     setSubmitting(true);
     setClaimFeedback(null);
     try {
-      await claimPost(post._id, trimmed);
+      const data = await claimPost(post._id, trimmed);
       setPost((prev) => ({ ...prev, status: 'claim_pending', claimedByMe: true }));
+      if (data?.conversationId) setConversationId(data.conversationId);
       setAnswer('');
       setClaimFeedback({
         type: 'success',
-        text: 'Claim accepted. The owner will contact you.',
+        text: 'Claim accepted. You can now chat with the owner.',
       });
     } catch (err) {
       const { status, message, attemptsLeft } = getClaimError(err);
+      const max = post.myAttempts?.max ?? 3;
       if (status === 429 || (status === 403 && attemptsLeft === 0)) {
         setLockedOut(true);
         setClaimFeedback(null);
+        const patch = { used: max };
+        const serverRequestStatus = err.response?.data?.requestStatus;
+        if (serverRequestStatus) patch.requestStatus = serverRequestStatus;
+        updateMyAttempts(patch);
       } else if (status === 403 && typeof attemptsLeft === 'number') {
+        updateMyAttempts({ used: max - attemptsLeft });
         setClaimFeedback({
           type: 'error',
           text: `Incorrect answer, ${attemptsLeft} attempt${
@@ -221,6 +292,44 @@ function PostDetail() {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Claimant: ask the finder to chat after using all attempts
+  const handleSendRequest = async (e) => {
+    e.preventDefault();
+    setRequestSending(true);
+    setRequestFeedback(null);
+    try {
+      await sendChatRequest(post._id, requestNote.trim());
+      updateMyAttempts({ used: post.myAttempts?.max ?? 3, requestStatus: 'pending' });
+      setRequestNote('');
+    } catch (err) {
+      setRequestFeedback({ type: 'error', text: getFriendlyErrorMessage(err) });
+      if (err.response?.status === 409) loadPost({ silent: true });
+    } finally {
+      setRequestSending(false);
+    }
+  };
+
+  // Poster: accept or decline a chat request
+  const handleRequestAction = async (userId, action) => {
+    setRequestBusy(userId);
+    setRequestActionError('');
+    try {
+      if (action === 'accept') {
+        const data = await acceptChatRequest(post._id, userId);
+        if (data?.conversationId) setConversationId(data.conversationId);
+        await loadPost({ silent: true });
+      } else {
+        await declineChatRequest(post._id, userId);
+      }
+    } catch (err) {
+      setRequestActionError(getFriendlyErrorMessage(err));
+      loadPost({ silent: true });
+    } finally {
+      await loadChatRequests();
+      setRequestBusy(null);
     }
   };
 
@@ -298,6 +407,12 @@ function PostDetail() {
   const ownerId = postedBy && typeof postedBy === 'object' ? postedBy._id : postedBy;
   const isOwner = Boolean(user) && String(user.id || user._id) === String(ownerId);
   const claimBoxVisible = isFound && status === 'active' && Boolean(user) && isVerified && !isOwner;
+
+  // Attempts counter + chat-request status (sent by the backend for non-owners of found posts)
+  const attemptsMax = post.myAttempts?.max ?? 3;
+  const attemptsUsed = post.myAttempts?.used ?? 0;
+  const requestStatus = post.myAttempts?.requestStatus ?? 'none';
+  const isLockedOut = lockedOut || attemptsUsed >= attemptsMax;
 
   // Status note for found posts
   let statusNote = null;
@@ -436,19 +551,69 @@ function PostDetail() {
                 <p className="text-sm text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
                   This item can't be claimed online.
                 </p>
-              ) : lockedOut ? (
-                <p
-                  className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3"
-                  role="alert"
-                >
-                  No attempts left for this item
-                </p>
+              ) : isLockedOut ? (
+                requestStatus === 'none' ? (
+                  // Out of attempts: ask the finder to chat anyway
+                  <form
+                    onSubmit={handleSendRequest}
+                    className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex flex-col gap-3"
+                  >
+                    <p className="text-sm font-semibold text-amber-900">
+                      No attempts left ({attemptsMax} of {attemptsMax} used)
+                    </p>
+                    <p className="text-xs text-amber-800">
+                      If you think this is your item (for example, you made a typo), ask the finder to
+                      chat with you. They will see the answers you tried and decide.
+                    </p>
+                    <textarea
+                      value={requestNote}
+                      onChange={(e) => setRequestNote(e.target.value)}
+                      maxLength={REQUEST_NOTE_MAX}
+                      rows={2}
+                      disabled={requestSending}
+                      placeholder="Optional note, e.g. I spelled the brand wrong"
+                      className="w-full px-4 py-2.5 rounded-lg text-sm bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 resize-none"
+                    />
+                    <span className="text-[11px] text-gray-400 self-end">
+                      {requestNote.length}/{REQUEST_NOTE_MAX}
+                    </span>
+                    {requestFeedback && (
+                      <p className="text-sm text-red-600" role="alert">
+                        {requestFeedback.text}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={requestSending}
+                      className="w-full sm:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                      {requestSending ? 'Sending...' : 'Ask the finder to chat'}
+                    </button>
+                  </form>
+                ) : requestStatus === 'pending' ? (
+                  <p
+                    className="text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3"
+                    role="status"
+                  >
+                    Request sent. Waiting for the finder to respond.
+                  </p>
+                ) : (
+                  <p
+                    className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3"
+                    role="alert"
+                  >
+                    No attempts left for this item
+                  </p>
+                )
               ) : (
                 <form onSubmit={handleClaim} className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                     Is this your item? Answer the owner's question
                   </p>
                   <p className="text-sm font-medium text-gray-900">{claimQuestion}</p>
+                  <p className="text-xs text-gray-500">
+                    Attempts used: {attemptsUsed} of {attemptsMax}
+                  </p>
                   <input
                     type="text"
                     value={answer}
@@ -466,6 +631,26 @@ function PostDetail() {
                     {submitting ? 'Checking...' : 'Claim this item'}
                   </button>
                 </form>
+              )
+            )}
+
+            {/* Poster of a found post: chat requests from people who used all their attempts */}
+            {isFound && isOwner && (
+              requestsError ? (
+                <p className="text-sm text-red-600" role="alert">
+                  {requestsError}
+                </p>
+              ) : (
+                requestData?.requests?.length > 0 && (
+                  <ChatRequestsPanel
+                    requests={requestData.requests}
+                    postActive={isActive}
+                    busyId={requestBusy}
+                    error={requestActionError}
+                    onAccept={(userId) => handleRequestAction(userId, 'accept')}
+                    onDecline={(userId) => handleRequestAction(userId, 'decline')}
+                  />
+                )
               )
             )}
 

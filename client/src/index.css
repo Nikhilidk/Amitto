@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+/* Smooth login <-> register transition */
+@keyframes authFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.auth-fade {
+  animation: authFadeUp 350ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-fade { animation: none; }
+}
+
+/* Prevents the page from shifting sideways when the scrollbar appears */
+html {
+  scrollbar-gutter: stable;
+}
